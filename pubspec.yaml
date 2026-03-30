@@ -20,5 +20,8 @@ flutter:
     - assets/images/iranian_missile.webp
     - assets/images/iron_dome_launcher.jpg
     - assets/images/crosshair.webp
+    - assets/images/doors.png
+    - assets/images/uav.png
     - assets/images/warhead_missile.jpg
+    - assets/images/clouds.jpg
     - assets/audio/

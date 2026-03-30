@@ -1,46 +1,48 @@
 /// ─────────────────────────────────────────────────────────────────────────
-/// GAME CONFIGURATION
-/// Edit this file to enable/disable missile types and set their minimum level.
+/// GAME CONFIGURATION — edit here to tune everything
 /// ─────────────────────────────────────────────────────────────────────────
-
 class GameConfig {
 
-  // ── Missile type toggles ────────────────────────────────────────────────
+  // ── Missile toggles ─────────────────────────────────────────────────────
+  static const bool iranianMissile          = true;
+  static const bool fragmentationWarhead    = true;
+  static const bool uavDrone               = true;
 
-  /// Standard Iranian ballistic missile — always enabled
-  static const bool iranianMissile = true;
-
-  /// Fragmentation warhead: splits into 2 bombs after appearing.
-  /// Each bomb must be intercepted separately.
-  static const bool fragmentationWarhead = true;
-
-  // ── Minimum level each missile type first appears ───────────────────────
-
-  /// Iranian missile appears from level 1
-  static const int iranianMissileMinLevel = 1;
-
-  /// Fragmentation warhead first appears from this level
+  // ── Min level for each missile type ─────────────────────────────────────
+  static const int iranianMissileMinLevel       = 1;
   static const int fragmentationWarheadMinLevel = 2;
+  static const int uavDroneMinLevel             = 6;
 
-  // ── Fragmentation warhead tuning ────────────────────────────────────────
-
-  /// Seconds after spawn before the warhead splits open
-  static const double fragmentationSplitDelay = 1.2;
-
-  /// Angle between the two bomb trajectories (degrees)
-  static const double fragmentationSplitAngleDeg = 30.0;
-
-  /// Speed of released bombs relative to parent missile speed (0.0–1.0)
+  // ── Fragmentation warhead ────────────────────────────────────────────────
+  static const double fragmentationSplitDelay      = 1.2;
+  static const double fragmentationSplitAngleDeg   = 30.0;
   static const double fragmentationBombSpeedFactor = 0.70;
+  static const double fragmentationSpawnChance     = 0.30;
+  // Level 5+: split into 3 bombs instead of 2
+  static const int    fragmentationBombsLevel5     = 3;
 
-  /// Chance (0.0–1.0) that a spawn slot is a fragmentation warhead
-  /// (when level >= fragmentationWarheadMinLevel)
-  static const double fragmentationSpawnChance = 0.30;
+  // ── UAV drone ────────────────────────────────────────────────────────────
+  /// Chance per spawn cycle that a UAV spawns (when eligible)
+  static const double uavSpawnChance           = 0.25;
+  /// Height range UAV flies at: 30%–80% of screen height
+  static const double uavHeightMin             = 0.30;
+  static const double uavHeightMax             = 0.80;
+  /// UAV speed px/s
+  static const double uavSpeed                 = 90.0;
+  /// Seconds before UAV randomly dives (min / max)
+  static const double uavDiveDelayMin          = 1.5;
+  static const double uavDiveDelayMax          = 4.0;
 
-  // ── Future missile types — add here ─────────────────────────────────────
-  // static const bool clusterBomb       = false;
+  // ── Level transition ─────────────────────────────────────────────────────
+  static const int levelPauseSeconds = 5;
+
+  // ── Clouds ───────────────────────────────────────────────────────────────
+  static const bool   cloudsEnabled   = true;
+  static const int    cloudsMinLevel  = 2;
+  static const int    cloudCount      = 5;
+  static const double cloudOpacity    = 0.40; // 40% visible = 60% transparent
+
+  // ── Future missile types ─────────────────────────────────────────────────
+  // static const bool clusterBomb        = false;
   // static const int  clusterBombMinLevel = 3;
-  //
-  // static const bool hypersonicMissile = false;
-  // static const int  hypersonicMissileMinLevel = 4;
 }

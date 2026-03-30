@@ -267,7 +267,7 @@ class _GameOverOverlay extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('CITY DESTROYED',
+            const Text('MISSION FAILED',
                 style: TextStyle(color: Colors.redAccent, fontSize: 26,
                     fontWeight: FontWeight.bold, letterSpacing: 2)),
             const SizedBox(height: 4),

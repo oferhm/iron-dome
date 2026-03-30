@@ -3,33 +3,48 @@ import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'iranian_missile.dart';
+import 'fragmentation_bomb.dart';
 import 'smoke_trail_component.dart';
+import 'explosion_component.dart';
 
+/// Iron Dome interceptor.
+/// Phase 1: launches straight up/forward from the launcher at a fixed angle.
+/// Phase 2: smoothly arcs toward the target.
 class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCallbacks {
   final Vector2 startPosition;
   final Vector2 targetPosition;
-  final void Function(IranianMissile hit) onHit;
+  final double launchAngle;   // angle of launcher arm — missiles fire in this direction
+  final void Function(dynamic hit) onHit;
   final VoidCallback onMiss;
 
-  static const double _speed = 680.0;
-  static const double _w     = 17.0;  // +20% wider
-  static const double _h     = 66.0;  // +50% longer
+  static const double _speed      = 680.0;
+  static const double _w          = 17.0;
+  static const double _h          = 66.0;
 
-  // Spawn a puff every 8px for a dense trail
-  static const double _puffInterval = 8.0;
-  double _distSinceLastPuff = 0;
-
-  final Random _rng = Random();
+  // Arc behaviour
+  static const double _launchAngleDeg = 60.0; // initial angle above horizontal (toward upper-left)
+  static const double _arcDuration    = 0.45;  // seconds of straight launch before arcing
 
   late Vector2 _velocity;
   late double  _angle;
+  double       _elapsed = 0;
+  bool         _arcing  = false; // true once in arc phase
+
+  // Initial launch direction
+  late Vector2 _launchDir;
+
   bool _isDestroyed = false;
   bool get isDestroyed => _isDestroyed;
   void markDestroyed() => _isDestroyed = true;
 
+  static const double _puffInterval = 8.0;
+  double _distSinceLastPuff = 0;
+  final Random _rng = Random();
+
   InterceptorMissile({
     required this.startPosition,
     required this.targetPosition,
+    required this.launchAngle,
     required this.onHit,
     required this.onMiss,
   }) : super(
@@ -40,9 +55,10 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
 
   @override
   Future<void> onLoad() async {
-    final dir = targetPosition - startPosition;
-    _angle    = atan2(dir.y, dir.x);
-    _velocity = Vector2(cos(_angle), sin(_angle)) * _speed;
+    // Launch in exactly the same direction the launcher arm points
+    _launchDir = Vector2(cos(launchAngle), sin(launchAngle)).normalized();
+    _velocity  = _launchDir * _speed;
+    _angle     = launchAngle;
 
     add(RectangleHitbox(size: Vector2(_w * 0.9, _h * 0.9)));
   }
@@ -52,6 +68,36 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
     super.update(dt);
     if (_isDestroyed) return;
 
+    _elapsed += dt;
+
+    if (_elapsed < _arcDuration) {
+      // Phase 1: straight launch
+      // velocity stays constant
+    } else {
+      // Phase 2: arc toward target — smoothly rotate velocity toward target direction
+      final toTarget = targetPosition - position;
+      if (toTarget.length > 1) {
+        final targetAngle  = atan2(toTarget.y, toTarget.x);
+        final currentAngle = atan2(_velocity.y, _velocity.x);
+
+        // Compute shortest angular delta
+        var delta = targetAngle - currentAngle;
+        while (delta >  pi) delta -= 2 * pi;
+        while (delta < -pi) delta += 2 * pi;
+
+        // Arc rate: faster turn at start of arc, levels off
+        final arcProgress = ((_elapsed - _arcDuration) / 0.6).clamp(0.0, 1.0);
+        final turnRate    = 6.0 + arcProgress * 8.0; // radians/sec
+        final turn        = (delta.sign * min(delta.abs(), turnRate * dt));
+        final newAngle    = currentAngle + turn;
+
+        _velocity = Vector2(cos(newAngle), sin(newAngle)) * _speed;
+      }
+    }
+
+    _angle = atan2(_velocity.y, _velocity.x);
+
+    // Smoke puffs
     final step = _velocity * dt;
     _distSinceLastPuff += step.length;
     position += step;
@@ -61,6 +107,18 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
       _spawnSmokePuff();
     }
 
+    // ── Check if we've reached the target position ──
+    final distToTarget = (position - targetPosition).length;
+    if (distToTarget < 18.0 && _elapsed > _arcDuration * 0.5) {
+      _isDestroyed = true;
+      // Always explode at target — full size if hit something, small if miss
+      onMiss(); // notify game (score/etc handled by proximity collision above)
+      gameRef.add(MissExplosion(position: targetPosition.clone()));
+      removeFromParent();
+      return;
+    }
+
+    // Off-screen check
     final s = gameRef.size;
     if (position.x < -80 || position.x > s.x + 80 ||
         position.y < -80 || position.y > s.y + 80) {
@@ -71,26 +129,20 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
   }
 
   void _spawnSmokePuff() {
-  final tailOffset = Vector2(-cos(_angle), -sin(_angle)) * (_h * 0.42);
-  final spread = Vector2(
-    (_rng.nextDouble() - 0.5) * 4,
-    (_rng.nextDouble() - 0.5) * 4,
-  );
-
-  final isHot = _rng.nextDouble() > 0.45;
-
-  gameRef.add(SmokePuff(
-    position: position + tailOffset + spread,
-    lifetime: isHot ? 5.0 + _rng.nextDouble() * 2.0
-                    : 6.0 + _rng.nextDouble() * 2.0,
-    radius:   isHot ? 3.0 + _rng.nextDouble() * 2.5
-                    : 4.0 + _rng.nextDouble() * 3.5,
-    opacity:  isHot ? 0.60 : 0.45,
-    color:    isHot
-                ? const Color(0xFFd0e8f0)
-                : const Color(0xFFb0b0b0),
-  ));
-}
+    final tailOffset = Vector2(-cos(_angle), -sin(_angle)) * (_h * 0.42);
+    final spread     = Vector2(
+      (_rng.nextDouble() - 0.5) * 4,
+      (_rng.nextDouble() - 0.5) * 4,
+    );
+    final isHot = _rng.nextDouble() > 0.45;
+    gameRef.add(SmokePuff(
+      position: position + tailOffset + spread,
+      lifetime: isHot ? 5.0 + _rng.nextDouble() * 2.0 : 6.0 + _rng.nextDouble() * 2.0,
+      radius:   isHot ? 3.0 + _rng.nextDouble() * 2.5  : 4.0 + _rng.nextDouble() * 3.5,
+      opacity:  isHot ? 0.60 : 0.45,
+      color:    isHot ? const Color(0xFFd0e8f0) : const Color(0xFFb0b0b0),
+    ));
+  }
 
   @override
   void onCollisionStart(Set<Vector2> intersectionPoints, PositionComponent other) {
@@ -101,13 +153,16 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
       _isDestroyed = true;
       onHit(target);
       removeFromParent();
+    } else if (target is FragmentationBomb && !target.isRemoving && !target.isDestroyed) {
+      _isDestroyed = true;
+      onHit(target);
+      removeFromParent();
     }
   }
 
   @override
   void render(Canvas canvas) {
     if (_isDestroyed) return;
-
     canvas.save();
     canvas.translate(size.x / 2, size.y / 2);
     canvas.rotate(_angle + pi / 2);
@@ -117,36 +172,30 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
   }
 
   void _drawMissile(Canvas canvas) {
-    final w = size.x;
-    final h = size.y;
+    final w = size.x; final h = size.y;
 
-    // Body
     final bodyRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(w * 0.2, h * 0.16, w * 0.6, h * 0.62), const Radius.circular(4));
+      Rect.fromLTWH(w*0.2, h*0.16, w*0.6, h*0.62), const Radius.circular(4));
     canvas.drawRRect(bodyRect, Paint()
       ..shader = LinearGradient(
         begin: Alignment.centerLeft, end: Alignment.centerRight,
         colors: [const Color(0xFFb0c8d8), const Color(0xFFe8f4fc), const Color(0xFFb0c8d8)],
-      ).createShader(Rect.fromLTWH(w * 0.2, h * 0.16, w * 0.6, h * 0.62)));
+      ).createShader(Rect.fromLTWH(w*0.2, h*0.16, w*0.6, h*0.62)));
     canvas.drawRRect(bodyRect, Paint()
-      ..color = const Color(0xFF7090a8)
-      ..style = PaintingStyle.stroke ..strokeWidth = 0.8);
+      ..color = const Color(0xFF7090a8)..style = PaintingStyle.stroke..strokeWidth = 0.8);
 
-    // Nose
     canvas.drawPath(
-      Path()..moveTo(w*0.2, h*0.16)..lineTo(w*0.5, 0.0)..lineTo(w*0.8, h*0.16)..close(),
+      Path()..moveTo(w*0.2,h*0.16)..lineTo(w*0.5,0.0)..lineTo(w*0.8,h*0.16)..close(),
       Paint()..shader = LinearGradient(
         begin: Alignment.centerLeft, end: Alignment.centerRight,
         colors: [const Color(0xFF8aaabb), const Color(0xFFccdde8), const Color(0xFF8aaabb)],
       ).createShader(Rect.fromLTWH(w*0.2, 0, w*0.6, h*0.16)),
     );
 
-    // Blue band
     canvas.drawRect(Rect.fromLTWH(w*0.2, h*0.40, w*0.6, h*0.07), Paint()..color = const Color(0xFF1155cc));
     canvas.drawRect(Rect.fromLTWH(w*0.2, h*0.38, w*0.6, h*0.02), Paint()..color = Colors.white.withOpacity(0.7));
     canvas.drawRect(Rect.fromLTWH(w*0.2, h*0.47, w*0.6, h*0.02), Paint()..color = Colors.white.withOpacity(0.7));
 
-    // Fins
     final finPaint = Paint()..shader = LinearGradient(
       colors: [const Color(0xFF8aaabb), const Color(0xFFccdde8)],
     ).createShader(Rect.fromLTWH(0, h*0.68, w, h*0.2));
@@ -157,10 +206,8 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
     canvas.drawPath(Path()..moveTo(w*0.68,h*0.70)..lineTo(w*0.90,h*0.84)..lineTo(w*0.68,h*0.78)..close(),
         Paint()..color = const Color(0xFF8aaabb).withOpacity(0.6));
 
-    // Nozzle
-    canvas.drawOval(Rect.fromLTWH(w*0.3, h*0.76, w*0.4, h*0.04), Paint()..color = const Color(0xFF334455));
+    canvas.drawOval(Rect.fromLTWH(w*0.3, h*0.76, w*0.4, h*0.05), Paint()..color = const Color(0xFF334455));
 
-    // Exhaust flame
     canvas.drawPath(
       Path()..moveTo(w*0.28,h*0.79)..lineTo(w*0.50,h*1.04)..lineTo(w*0.72,h*0.79)..close(),
       Paint()..shader = LinearGradient(
@@ -172,5 +219,61 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
       Path()..moveTo(w*0.38,h*0.79)..lineTo(w*0.50,h*0.99)..lineTo(w*0.62,h*0.79)..close(),
       Paint()..color = Colors.white.withOpacity(0.95),
     );
+  }
+}
+
+/// Small blue-white explosion shown when interceptor reaches target but misses.
+class MissExplosion extends PositionComponent with HasGameRef {
+  double _elapsed = 0;
+  static const double _dur = 0.55;
+  static const double _sz  = 70.0;
+
+  MissExplosion({required Vector2 position})
+      : super(position: position, size: Vector2.all(_sz), anchor: Anchor.center);
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    _elapsed += dt;
+    if (_elapsed >= _dur) removeFromParent();
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final prog = (_elapsed / _dur).clamp(0.0, 1.0);
+    final cx = size.x / 2;
+    final cy = size.y / 2;
+
+    // Expanding ring
+    canvas.drawCircle(
+      Offset(cx, cy),
+      _sz * 0.5 * prog,
+      Paint()
+        ..color = Colors.lightBlueAccent.withOpacity((1 - prog) * 0.6)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4 * (1 - prog),
+    );
+
+    // Central flash
+    if (prog < 0.3) {
+      canvas.drawCircle(
+        Offset(cx, cy),
+        _sz * 0.3 * (1 - prog / 0.3),
+        Paint()
+          ..color = Colors.white.withOpacity((1 - prog / 0.3) * 0.8)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+      );
+    }
+
+    // 6 spark dots flying outward
+    for (int i = 0; i < 6; i++) {
+      final angle = i * pi / 3 + prog * 2;
+      final r     = _sz * 0.4 * prog;
+      canvas.drawCircle(
+        Offset(cx + cos(angle) * r, cy + sin(angle) * r),
+        3 * (1 - prog),
+        Paint()..color = Colors.lightBlueAccent.withOpacity((1 - prog) * 0.9),
+      );
+    }
   }
 }

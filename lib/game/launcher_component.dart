@@ -12,6 +12,13 @@ class LauncherComponent extends Component with HasGameRef {
         _pos.y + _sz.y * 0.12,
       );
 
+  /// The angle the launcher arm points — missiles should launch in this direction.
+  /// armBase=(0.50,0.44) → armTip=(0.06,0.10), so dx=-0.44, dy=-0.34
+  double get launchAngle => atan2(
+        (_sz.y * 0.10) - (_sz.y * 0.44),
+        (_sz.x * 0.06) - (_sz.x * 0.50),
+      );
+
   @override
   void render(Canvas canvas) {
     final screen = gameRef.size;

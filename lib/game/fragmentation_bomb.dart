@@ -3,6 +3,7 @@ import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'explosion_component.dart';
+import 'missile_flame.dart';
 import 'ground_explosion_component.dart';
 
 /// One of the two bombs released by a FragmentationWarhead.
@@ -22,6 +23,8 @@ class FragmentationBomb extends PositionComponent
   late Vector2 _velocity;
   final List<Vector2> _trail = [];
   double _flameTime = 0;
+  final List<FlameParticle> _flameParticles = [];
+  final Random _rng = Random();
 
   // Size: a bit smaller than Iranian missile (36×148), no image used
   static const double _w = 32.0;
@@ -51,6 +54,7 @@ class FragmentationBomb extends PositionComponent
     if (_isDestroyed) return;
 
     _flameTime += dt;
+    updateFlameParticles(_flameParticles, size.x, dt, _rng);
 
     if (_trail.isEmpty || (_trail.last - position).length > 7) {
       _trail.add(position.clone());
@@ -140,35 +144,7 @@ class FragmentationBomb extends PositionComponent
     canvas.drawOval(Rect.fromLTWH(w*0.36, h*0.74, w*0.28, h*0.04),
         Paint()..color = const Color(0xFF1a2010));
 
-    // Fast animated flame — matches Iranian missile style
-    final f1 = sin(t * 52.0);
-    final f2 = sin(t * 38.0 + 1.4);
-    final flameLen = h * (0.20 + f1 * 0.04);
-    final sway     = f2 * w * 0.03;
-
-    canvas.drawPath(
-      Path()
-        ..moveTo(w * 0.33, h * 0.77)
-        ..cubicTo(w * 0.28, h * 0.84, w * 0.43 + sway, h * 0.77 + flameLen * 0.8,
-            w * 0.50 + sway, h * 0.77 + flameLen)
-        ..cubicTo(w * 0.57 + sway, h * 0.77 + flameLen * 0.8, w * 0.72, h * 0.84,
-            w * 0.67, h * 0.77)
-        ..close(),
-      Paint()..shader = LinearGradient(
-        begin: Alignment.topCenter, end: Alignment.bottomCenter,
-        colors: [Colors.orangeAccent, Colors.yellow, Colors.transparent],
-      ).createShader(Rect.fromLTWH(w*0.28, h*0.77, w*0.44, flameLen + 4)),
-    );
-    // White inner core
-    canvas.drawPath(
-      Path()
-        ..moveTo(w*0.42, h*0.77)
-        ..cubicTo(w*0.40, h*0.83, w*0.47+sway*0.5, h*0.77+flameLen*0.7,
-            w*0.50+sway*0.5, h*0.77+flameLen*0.85)
-        ..cubicTo(w*0.53+sway*0.5, h*0.77+flameLen*0.7, w*0.60, h*0.83,
-            w*0.58, h*0.77)
-        ..close(),
-      Paint()..color = Colors.white.withOpacity(0.85),
-    );
+    // ── Shared slim fast flame + spark trail ──
+    drawMissileFlame(canvas, w, h, t, _flameParticles, nozzleY: 0.78);
   }
 }

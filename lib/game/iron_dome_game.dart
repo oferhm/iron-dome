@@ -21,6 +21,8 @@ import 'high_score_manager.dart';
 import 'fragmentation_warhead.dart';
 import 'fragmentation_bomb.dart';
 import 'game_config.dart';
+import 'cloud_component.dart';
+import 'uav_component.dart';
 
 class IronDomeGame extends FlameGame
     with TapCallbacks, DragCallbacks, HasCollisionDetection {
@@ -65,6 +67,9 @@ class IronDomeGame extends FlameGame
     await super.onLoad();
     camera.viewfinder.anchor = Anchor.topLeft;
 
+    await CloudComponent.preload();
+    await UavComponent.preload();
+    await FragmentationWarhead.preload();
     await sound.initialize();
     await highScores.load();
     difficulty.reset();
@@ -82,9 +87,16 @@ class IronDomeGame extends FlameGame
 
     if (_gameOver) return;
 
+    // ── Cloud management ──
+    if (GameConfig.cloudsEnabled &&
+        difficulty.level >= GameConfig.cloudsMinLevel) {
+      _updateClouds();
+    }
+
     final interceptors = children.whereType<InterceptorMissile>().toList();
     final iranians     = children.whereType<IranianMissile>().toList();
     final bombs        = children.whereType<FragmentationBomb>().toList();
+    final uavs         = children.whereType<UavComponent>().toList();
     final warheads     = children.whereType<FragmentationWarhead>().toList();
 
     // Check interceptor vs fragmentation bombs
@@ -95,6 +107,20 @@ class IronDomeGame extends FlameGame
         if ((interceptor.position - bomb.position).length < 50.0) {
           interceptor.markDestroyed();
           _onBombHit(bomb);
+          interceptor.removeFromParent();
+          break;
+        }
+      }
+    }
+
+    // Check interceptor vs UAV
+    for (final interceptor in interceptors) {
+      if (interceptor.isRemoving || interceptor.isDestroyed) continue;
+      for (final uav in uavs) {
+        if (uav.isRemoving || uav.isDestroyed) continue;
+        if ((interceptor.position - uav.position).length < 45.0) {
+          interceptor.markDestroyed();
+          _onUavHit(uav);
           interceptor.removeFromParent();
           break;
         }
@@ -128,6 +154,48 @@ class IronDomeGame extends FlameGame
           break;
         }
       }
+    }
+  }
+
+  void _spawnUav() {
+    if (_gameOver || _inLevelPause) return;
+
+    final fromLeft = _random.nextBool();
+    final height   = size.y * (GameConfig.uavHeightMin +
+        _random.nextDouble() * (GameConfig.uavHeightMax - GameConfig.uavHeightMin));
+    final startX   = fromLeft ? -60.0 : size.x + 60.0;
+    final diveDelay = GameConfig.uavDiveDelayMin +
+        _random.nextDouble() * (GameConfig.uavDiveDelayMax - GameConfig.uavDiveDelayMin);
+
+    add(UavComponent(
+      fromLeft:        fromLeft,
+      flyHeight:       height,
+      diveDelay:       diveDelay,
+      onReachedGround: _onMissileReachedGround,
+      position:        Vector2(startX, height),
+    ));
+  }
+
+  void _updateClouds() {
+    final clouds = children.whereType<CloudComponent>().toList();
+
+    // Remove clouds that drifted off the left edge
+    for (final cloud in clouds) {
+      if (cloud.isOffScreen) {
+        cloud.removeFromParent();
+        // Immediately respawn one from the right edge to keep count constant
+        final newCloud = CloudComponent.random(screenW: size.x, screenH: size.y, spawnOffScreen: true);
+        newCloud.priority = 200;
+        add(newCloud);
+      }
+    }
+
+    // Initial population on first call
+    final current = children.whereType<CloudComponent>().length;
+    for (int i = current; i < GameConfig.cloudCount; i++) {
+      final c = CloudComponent.random(screenW: size.x, screenH: size.y);
+      c.priority = 100;
+      add(c);
     }
   }
 
@@ -187,6 +255,7 @@ class IronDomeGame extends FlameGame
         startPosition:   startPos,
         speedMultiplier: difficulty.missileSpeedMultiplier,
         onReachedGround: _onMissileReachedGround,
+        level:           difficulty.level,
       ));
     } else if (GameConfig.iranianMissile &&
         difficulty.level >= GameConfig.iranianMissileMinLevel) {
@@ -212,8 +281,8 @@ class IronDomeGame extends FlameGame
     // Police light effect on the city for 5 seconds
     add(PoliceLightComponent());
 
-    // 4-second break then resume
-    async.Future.delayed(const Duration(milliseconds: 4000), () {
+    // Level pause — duration from GameConfig
+    async.Future.delayed(Duration(seconds: GameConfig.levelPauseSeconds), () {
       if (!_gameOver) _startSpawning();
     });
   }
@@ -267,12 +336,33 @@ class IronDomeGame extends FlameGame
     add(InterceptorMissile(
       startPosition:  launcher.missileExitPoint.clone(),
       targetPosition: target.clone(),
-      onHit:          _onInterceptorHit,
+      launchAngle:    launcher.launchAngle,
+      onHit:          (target) {
+        if (target is IranianMissile) _onInterceptorHit(target);
+        else if (target is FragmentationBomb) _onBombHit(target);
+      },
       onMiss:         () {},
     ));
 
     crosshair?.removeFromParent();
     crosshair = null;
+  }
+
+  void _onUavHit(UavComponent target) {
+    if (target.isRemoving || target.isDestroyed) return;
+    target.markDestroyed();
+
+    hitsNotifier.value++;
+    final basePoints    = 80 + (difficulty.level - 1) * 30;
+    final effMultiplier = shotsFired == 0 ? 1.0 : (hits / shotsFired).clamp(0.1, 1.0);
+    scoreNotifier.value += (basePoints * effMultiplier).round();
+
+    sound.playExplosion();
+    add(ExplosionComponent(position: target.position.clone()));
+    target.removeFromParent();
+
+    final levelChanged = difficulty.updateForScore(score);
+    if (levelChanged) _onLevelUp();
   }
 
   void _onBombHit(FragmentationBomb target) {
@@ -345,6 +435,8 @@ class IronDomeGame extends FlameGame
     children.whereType<GroundExplosionComponent>().toList().forEach((e) => e.removeFromParent());
     children.whereType<WaveBannerComponent>().toList().forEach((b) => b.removeFromParent());
     children.whereType<FragmentationWarhead>().toList().forEach((f) => f.removeFromParent());
+    children.whereType<CloudComponent>().toList().forEach((c) => c.removeFromParent());
+    children.whereType<UavComponent>().toList().forEach((u) => u.removeFromParent());
     children.whereType<FragmentationBomb>().toList().forEach((f) => f.removeFromParent());
     children.whereType<SmokePuff>().toList().forEach((s) => s.removeFromParent());
     children.whereType<PoliceLightComponent>().toList().forEach((p) => p.removeFromParent());
