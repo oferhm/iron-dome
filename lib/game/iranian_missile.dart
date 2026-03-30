@@ -3,6 +3,7 @@ import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'explosion_component.dart';
+import 'ground_explosion_component.dart';
 
 class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbacks {
   final Vector2 startPosition;
@@ -10,9 +11,10 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
   final double speedMultiplier;
 
   final List<Vector2> _trail = [];
+  double _flameTime = 0.0; // for animated flame
 
   static const double _baseSpeed = 126.0;
-  static const double _angleDeg  = 80.0;
+  static const double _angleDeg  = 85.0; // +5° more sideways
   static final  double _angleRad  = _angleDeg * pi / 180.0;
 
   late final Vector2 _velocity;
@@ -36,7 +38,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
   @override
   Future<void> onLoad() async {
     final speed = _baseSpeed * speedMultiplier;
-    _velocity    = Vector2(cos(_angleRad) * speed * 0.35, sin(_angleRad) * speed);
+    _velocity    = Vector2(cos(_angleRad) * speed * 0.50, sin(_angleRad) * speed);
     _travelAngle = atan2(_velocity.y, _velocity.x);
 
     // FIX: no anchor/position offset — Anchor.center already centers the hitbox
@@ -50,6 +52,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
     super.update(dt);
     if (_isDestroyed) return;
 
+    _flameTime += dt;
     if (_trail.isEmpty || (_trail.last - position).length > 10) {
       _trail.add(position.clone());
       if (_trail.length > 22) _trail.removeAt(0);
@@ -60,7 +63,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
     final groundY = gameRef.size.y;
 
     // explode when 10% from ground
-    if (!_isDestroyed && position.y >= groundY * 0.90) {
+    if (!_isDestroyed && position.y >= groundY * 0.78) {
       _explodeAtGround();
       return;
     }
@@ -74,7 +77,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
   void _explodeAtGround() {
     _isDestroyed = true;
     // Spawn explosion at current position
-    gameRef.add(ExplosionComponent(position: position.clone()));
+    gameRef.add(GroundExplosionComponent(position: position.clone()));
     onReachedGround(); // still counts as a hit on the city
     removeFromParent();
   }
@@ -82,6 +85,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
   bool get isDestroyed => _isDestroyed;
   void destroy() => _isDestroyed = true;
   void markDestroyed() => _isDestroyed = true;
+  double get travelAngle => _travelAngle;
 
   @override
   void render(Canvas canvas) {
@@ -93,7 +97,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
     canvas.translate(size.x / 2, size.y / 2);
     canvas.rotate(rotation);
     canvas.translate(-size.x / 2, -size.y / 2);
-    _drawMissile(canvas);
+    _drawMissile(canvas, _flameTime);
     canvas.restore();
   }
 
@@ -109,7 +113,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
     }
   }
 
-  void _drawMissile(Canvas canvas) {
+  void _drawMissile(Canvas canvas, double t) {
     final w = size.x;
     final h = size.y;
 
@@ -159,17 +163,96 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
     // Nozzle
     canvas.drawOval(Rect.fromLTWH(w*0.33, h*0.76, w*0.34, h*0.05), Paint()..color = const Color(0xFF222820));
 
-    // Flame
+    // ── Fast animated rocket exhaust flames — 50% slimmer, jet-speed flicker ──
+    // High-frequency sin waves for fast turbine-like movement
+    final f1 = sin(t * 55.0);                    // very fast — main flicker
+    final f2 = sin(t * 42.0 + 1.1);              // fast — secondary offset
+    final f3 = sin(t * 28.0 + 2.3);              // fast sway
+    final f4 = sin(t * 70.0 + 0.7);              // ultra-fast shimmer
+
+    // Width is now 50% of original (was ~0.60w, now ~0.30w max)
+    // Sway is also proportionally reduced
+    final sway = f3 * w * 0.04;
+
+    // Outer flame — slim, 50% narrower than before
+    final outerLen  = h * (0.50 + f1 * 0.08);
     canvas.drawPath(
-      Path()..moveTo(w*0.32,h*0.79)..lineTo(w*0.50,h*1.02)..lineTo(w*0.68,h*0.79)..close(),
+      Path()
+        ..moveTo(w * 0.34, h * 0.78)                          // left nozzle edge (slim)
+        ..cubicTo(
+          w * 0.28 + f2 * 2, h * 0.86,
+          w * 0.40 + sway,   h * 0.78 + outerLen * 0.65,
+          w * 0.50 + sway,   h * 0.78 + outerLen,             // tip
+        )
+        ..cubicTo(
+          w * 0.60 + sway,   h * 0.78 + outerLen * 0.65,
+          w * 0.72 + f1 * 2, h * 0.86,
+          w * 0.66, h * 0.78,                                  // right nozzle edge
+        )
+        ..close(),
       Paint()..shader = LinearGradient(
         begin: Alignment.topCenter, end: Alignment.bottomCenter,
-        colors: [Colors.orangeAccent, Colors.yellow, Colors.white],
-      ).createShader(Rect.fromLTWH(w*0.32, h*0.79, w*0.36, h*0.23)),
+        colors: [const Color(0xFFcc3300), const Color(0xFFff6600),
+                 const Color(0xFFffaa00), Colors.transparent],
+        stops: const [0.0, 0.30, 0.65, 1.0],
+      ).createShader(Rect.fromLTWH(w * 0.28, h * 0.78, w * 0.44, outerLen + 8)),
     );
+
+    // Mid flame — tighter, fast independent sway
+    final midLen  = h * (0.38 + f2 * 0.07);
+    final midSway = f4 * w * 0.03;
     canvas.drawPath(
-      Path()..moveTo(w*0.40,h*0.79)..lineTo(w*0.50,h*0.97)..lineTo(w*0.60,h*0.79)..close(),
-      Paint()..color = Colors.white.withOpacity(0.85),
+      Path()
+        ..moveTo(w * 0.38, h * 0.79)
+        ..cubicTo(
+          w * 0.34 + f1 * 1.5, h * 0.87,
+          w * 0.43 + midSway,  h * 0.79 + midLen * 0.70,
+          w * 0.50 + midSway,  h * 0.79 + midLen,
+        )
+        ..cubicTo(
+          w * 0.57 + midSway,  h * 0.79 + midLen * 0.70,
+          w * 0.66 + f2 * 1.5, h * 0.87,
+          w * 0.62, h * 0.79,
+        )
+        ..close(),
+      Paint()..shader = LinearGradient(
+        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+        colors: [Colors.orangeAccent, Colors.yellow, Colors.transparent],
+        stops: const [0.0, 0.50, 1.0],
+      ).createShader(Rect.fromLTWH(w * 0.34, h * 0.79, w * 0.32, midLen + 6)),
+    );
+
+    // Inner hot core — ultra-slim white spike, fastest movement
+    final coreLen  = h * (0.28 + f4 * 0.06);
+    final coreSway = f1 * w * 0.025;
+    canvas.drawPath(
+      Path()
+        ..moveTo(w * 0.43, h * 0.80)
+        ..cubicTo(
+          w * 0.41, h * 0.88,
+          w * 0.47 + coreSway, h * 0.80 + coreLen * 0.75,
+          w * 0.50 + coreSway, h * 0.80 + coreLen,
+        )
+        ..cubicTo(
+          w * 0.53 + coreSway, h * 0.80 + coreLen * 0.75,
+          w * 0.59, h * 0.88,
+          w * 0.57, h * 0.80,
+        )
+        ..close(),
+      Paint()..shader = LinearGradient(
+        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+        colors: [Colors.white, const Color(0xFF88ccff), Colors.transparent],
+        stops: const [0.0, 0.50, 1.0],
+      ).createShader(Rect.fromLTWH(w * 0.41, h * 0.80, w * 0.18, coreLen + 4)),
+    );
+
+    // Nozzle glow — pulses fast with f4
+    canvas.drawCircle(
+      Offset(w * 0.50, h * 0.79),
+      w * 0.14 + f4.abs() * w * 0.04,
+      Paint()
+        ..color = Colors.white.withOpacity(0.80 + f1 * 0.12)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
     );
   }
 }

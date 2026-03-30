@@ -11,8 +11,10 @@ import 'iranian_missile.dart';
 import 'interceptor_missile.dart';
 import 'crosshair_component.dart';
 import 'explosion_component.dart';
+import 'ground_explosion_component.dart';
 import 'wave_banner_component.dart';
 import 'police_light_component.dart';
+import 'smoke_trail_component.dart';
 import 'difficulty_manager.dart';
 import 'sound_manager.dart';
 import 'high_score_manager.dart';
@@ -37,7 +39,10 @@ class IronDomeGame extends FlameGame
       shotsFired == 0 ? 100.0 : (hits / shotsFired * 100).clamp(0, 100);
 
   static const int    _maxMissilesOnScreen = 5;
-  static const double _collisionRadius     = 38.0;
+  // Iranian missile: 36w x 148h → half-diagonal ~75px
+  // Interceptor:     17w x 66h  → half-diagonal ~34px
+  // Combined hit radius = sum of half-diagonals × 0.7 (conservative)
+  static const double _collisionRadius = 75.0;
 
   late LauncherComponent launcher;
   CrosshairComponent? crosshair;
@@ -47,6 +52,7 @@ class IronDomeGame extends FlameGame
   bool          _inLevelPause = false;
   bool          _gameOver     = false;
   Vector2       _crosshairPosition = Vector2.zero();
+
 
   @override
   Color backgroundColor() => const Color(0xFF0a1628);
@@ -70,6 +76,7 @@ class IronDomeGame extends FlameGame
   @override
   void update(double dt) {
     super.update(dt);
+
     if (_gameOver) return;
 
     final interceptors = children.whereType<InterceptorMissile>().toList();
@@ -79,7 +86,23 @@ class IronDomeGame extends FlameGame
       if (interceptor.isRemoving || interceptor.isDestroyed) continue;
       for (final iranian in iranians) {
         if (iranian.isRemoving || iranian.isDestroyed) continue;
-        if ((interceptor.position - iranian.position).length < _collisionRadius) {
+        // Project the distance onto both missile axes for accurate rotated-body check.
+        // We test if the interceptor center is within the Iranian missile's body rectangle
+        // (accounting for its travel angle) OR within the simple radius fallback.
+        final diff   = interceptor.position - iranian.position;
+        final dist   = diff.length;
+
+        // Simple radius check — generous to catch near-misses on the body
+        final radiusHit = dist < _collisionRadius;
+
+        // Axis-aligned body check: project diff onto Iranian missile's long axis
+        // Iranian travels at ~80° from horizontal, positive-x direction
+        final iranianAngle = iranian.travelAngle;
+        final alongBody  = (diff.x * sin(iranianAngle) - diff.y * cos(iranianAngle)).abs();
+        final acrossBody = (diff.x * cos(iranianAngle) + diff.y * sin(iranianAngle)).abs();
+        final bodyHit    = alongBody < 74.0 && acrossBody < 22.0; // half-length × half-width
+
+        if (radiusHit || bodyHit) {
           interceptor.markDestroyed();
           _onInterceptorHit(iranian);
           interceptor.removeFromParent();
@@ -263,7 +286,9 @@ class IronDomeGame extends FlameGame
     children.whereType<IranianMissile>().toList().forEach((m) => m.removeFromParent());
     children.whereType<InterceptorMissile>().toList().forEach((m) => m.removeFromParent());
     children.whereType<ExplosionComponent>().toList().forEach((e) => e.removeFromParent());
+    children.whereType<GroundExplosionComponent>().toList().forEach((e) => e.removeFromParent());
     children.whereType<WaveBannerComponent>().toList().forEach((b) => b.removeFromParent());
+    children.whereType<SmokePuff>().toList().forEach((s) => s.removeFromParent());
     children.whereType<PoliceLightComponent>().toList().forEach((p) => p.removeFromParent());
     crosshair?.removeFromParent();
     crosshair = null;
