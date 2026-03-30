@@ -18,6 +18,9 @@ import 'smoke_trail_component.dart';
 import 'difficulty_manager.dart';
 import 'sound_manager.dart';
 import 'high_score_manager.dart';
+import 'fragmentation_warhead.dart';
+import 'fragmentation_bomb.dart';
+import 'game_config.dart';
 
 class IronDomeGame extends FlameGame
     with TapCallbacks, DragCallbacks, HasCollisionDetection {
@@ -81,6 +84,22 @@ class IronDomeGame extends FlameGame
 
     final interceptors = children.whereType<InterceptorMissile>().toList();
     final iranians     = children.whereType<IranianMissile>().toList();
+    final bombs        = children.whereType<FragmentationBomb>().toList();
+    final warheads     = children.whereType<FragmentationWarhead>().toList();
+
+    // Check interceptor vs fragmentation bombs
+    for (final interceptor in interceptors) {
+      if (interceptor.isRemoving || interceptor.isDestroyed) continue;
+      for (final bomb in bombs) {
+        if (bomb.isRemoving || bomb.isDestroyed) continue;
+        if ((interceptor.position - bomb.position).length < 50.0) {
+          interceptor.markDestroyed();
+          _onBombHit(bomb);
+          interceptor.removeFromParent();
+          break;
+        }
+      }
+    }
 
     for (final interceptor in interceptors) {
       if (interceptor.isRemoving || interceptor.isDestroyed) continue;
@@ -146,17 +165,37 @@ class IronDomeGame extends FlameGame
 
   void _spawnIranianMissile() {
     if (_gameOver || _inLevelPause) return;
-    if (children.whereType<IranianMissile>().length >= _maxMissilesOnScreen) return;
 
-    final margin     = size.x * 0.15;
-    final spawnWidth = size.x * 0.70;
-    final startX     = margin + _random.nextDouble() * spawnWidth;
+    // Count all active threat types toward screen cap
+    final onScreen = children.whereType<IranianMissile>().length
+                   + children.whereType<FragmentationWarhead>().length
+                   + children.whereType<FragmentationBomb>().length;
+    if (onScreen >= _maxMissilesOnScreen) return;
 
-    add(IranianMissile(
-      startPosition:   Vector2(startX, -80),
-      speedMultiplier: difficulty.missileSpeedMultiplier,
-      onReachedGround: _onMissileReachedGround,
-    ));
+    final margin   = size.x * 0.15;
+    final spawnW   = size.x * 0.70;
+    final startX   = margin + _random.nextDouble() * spawnW;
+    final startPos = Vector2(startX, -80);
+
+    // Decide missile type based on config + current level
+    final canSpawnFrag = GameConfig.fragmentationWarhead &&
+        difficulty.level >= GameConfig.fragmentationWarheadMinLevel;
+
+    if (canSpawnFrag &&
+        _random.nextDouble() < GameConfig.fragmentationSpawnChance) {
+      add(FragmentationWarhead(
+        startPosition:   startPos,
+        speedMultiplier: difficulty.missileSpeedMultiplier,
+        onReachedGround: _onMissileReachedGround,
+      ));
+    } else if (GameConfig.iranianMissile &&
+        difficulty.level >= GameConfig.iranianMissileMinLevel) {
+      add(IranianMissile(
+        startPosition:   startPos,
+        speedMultiplier: difficulty.missileSpeedMultiplier,
+        onReachedGround: _onMissileReachedGround,
+      ));
+    }
   }
 
   void _onLevelUp() {
@@ -236,6 +275,23 @@ class IronDomeGame extends FlameGame
     crosshair = null;
   }
 
+  void _onBombHit(FragmentationBomb target) {
+    if (target.isRemoving || target.isDestroyed) return;
+    target.markDestroyed();
+
+    hitsNotifier.value++;
+    final basePoints    = 120 + (difficulty.level - 1) * 50; // slightly more points for harder target
+    final effMultiplier = shotsFired == 0 ? 1.0 : (hits / shotsFired).clamp(0.1, 1.0);
+    scoreNotifier.value += (basePoints * effMultiplier).round();
+
+    sound.playExplosion();
+    add(ExplosionComponent(position: target.position.clone()));
+    target.removeFromParent();
+
+    final levelChanged = difficulty.updateForScore(score);
+    if (levelChanged) _onLevelUp();
+  }
+
   void _onInterceptorHit(IranianMissile target) {
     if (target.isRemoving || target.isDestroyed) return;
     target.markDestroyed();
@@ -288,6 +344,8 @@ class IronDomeGame extends FlameGame
     children.whereType<ExplosionComponent>().toList().forEach((e) => e.removeFromParent());
     children.whereType<GroundExplosionComponent>().toList().forEach((e) => e.removeFromParent());
     children.whereType<WaveBannerComponent>().toList().forEach((b) => b.removeFromParent());
+    children.whereType<FragmentationWarhead>().toList().forEach((f) => f.removeFromParent());
+    children.whereType<FragmentationBomb>().toList().forEach((f) => f.removeFromParent());
     children.whereType<SmokePuff>().toList().forEach((s) => s.removeFromParent());
     children.whereType<PoliceLightComponent>().toList().forEach((p) => p.removeFromParent());
     crosshair?.removeFromParent();
