@@ -1,0 +1,23 @@
+name: iron_dome_game
+description: Iron Dome missile defense game
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flame: ^1.18.0
+  flame_audio: ^2.1.1
+  shared_preferences: ^2.2.2
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/city_skyline.jpg
+    - assets/images/iranian_missile.webp
+    - assets/images/iron_dome_launcher.jpg
+    - assets/images/crosshair.webp
+    - assets/audio/
