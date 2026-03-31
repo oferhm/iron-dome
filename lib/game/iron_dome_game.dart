@@ -97,84 +97,7 @@ class IronDomeGame extends FlameGame
       _updateClouds();
     }
 
-    final interceptors = children.whereType<InterceptorMissile>().toList();
-    final iranians     = children.whereType<IranianMissile>().toList();
-    final bombs        = children.whereType<FragmentationBomb>().toList();
-    final uavs         = children.whereType<UavComponent>().toList();
-    final warheads     = children.whereType<FragmentationWarhead>().toList();
-
-    // Check interceptor vs fragmentation bombs
-    for (final interceptor in interceptors) {
-      if (interceptor.isRemoving || interceptor.isDestroyed) continue;
-      for (final bomb in bombs) {
-        if (bomb.isRemoving || bomb.isDestroyed) continue;
-        if ((interceptor.position - bomb.position).length < 45.0) {
-          interceptor.markDestroyed();
-          _onBombHit(bomb);
-          interceptor.removeFromParent();
-          break;
-        }
-      }
-    }
-
-    // Check interceptor vs UAV
-    for (final interceptor in interceptors) {
-      if (interceptor.isRemoving || interceptor.isDestroyed) continue;
-      for (final uav in uavs) {
-        if (uav.isRemoving || uav.isDestroyed) continue;
-        if ((interceptor.position - uav.position).length < 50.0) {
-          interceptor.markDestroyed();
-          _onUavHit(uav);
-          interceptor.removeFromParent();
-          break;
-        }
-      }
-    }
-
-    for (final interceptor in interceptors) {
-      if (interceptor.isRemoving || interceptor.isDestroyed) continue;
-      for (final iranian in iranians) {
-        if (iranian.isRemoving || iranian.isDestroyed) continue;
-        // Project the distance onto both missile axes for accurate rotated-body check.
-        // We test if the interceptor center is within the Iranian missile's body rectangle
-        // (accounting for its travel angle) OR within the simple radius fallback.
-        final diff   = interceptor.position - iranian.position;
-        final dist   = diff.length;
-
-        // Simple radius check — generous to catch near-misses on the body
-        final radiusHit = dist < _collisionRadius;
-
-        // Axis-aligned body check: project diff onto Iranian missile's long axis
-        // Iranian travels at ~80° from horizontal, positive-x direction
-        final iranianAngle = iranian.travelAngle;
-        final alongBody  = (diff.x * sin(iranianAngle) - diff.y * cos(iranianAngle)).abs();
-        final acrossBody = (diff.x * cos(iranianAngle) + diff.y * sin(iranianAngle)).abs();
-        // Asymmetric: 120px toward nose/warhead, only 30px toward tail
-        final signedAlong = diff.x * sin(iranianAngle) - diff.y * cos(iranianAngle);
-        final noseHit  = signedAlong > -190.0 && signedAlong < 30.0;
-        final bodyHit  = noseHit && acrossBody < 32.0;
-
-        if (radiusHit || bodyHit) {
-          interceptor.markDestroyed();
-          _onInterceptorHit(iranian);
-          interceptor.removeFromParent();
-          break;
-        }
-      }
-
-      // Also check interceptor vs fragmentation warhead carrier
-      if (interceptor.isRemoving || interceptor.isDestroyed) continue;
-      for (final wh in warheads) {
-        if (wh.isRemoving || wh.isDestroyed) continue;
-        final d = (interceptor.position - wh.position).length;
-        if (d < _collisionRadius) {
-          interceptor.markDestroyed();
-          _onWarheadHit(wh);
-          interceptor.removeFromParent();
-          break;
-        }
-      }
-    }
+    // Collision handled inside InterceptorMissile._explodeAtTarget() via blast radius.
   }
 
   void _spawnLaunchSmoke() {
@@ -398,9 +321,10 @@ class IronDomeGame extends FlameGame
       targetPosition: target.clone(),
       launchAngle:    launcher.launchAngle,
       onHit:          (target) {
-        if (target is IranianMissile)       _onInterceptorHit(target);
+        if (target is IranianMissile)            _onInterceptorHit(target);
         else if (target is FragmentationWarhead) _onWarheadHit(target);
         else if (target is FragmentationBomb)    _onBombHit(target);
+        else if (target is UavComponent)         _onUavHit(target);
       },
       onMiss:         () {},
     ));

@@ -6,6 +6,7 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'iranian_missile.dart';
 import 'fragmentation_bomb.dart';
+import 'uav_component.dart';
 import 'fragmentation_warhead.dart';
 import 'smoke_trail_component.dart';
 import 'explosion_component.dart';
@@ -21,6 +22,7 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
   final VoidCallback onMiss;
 
   // Speed from GameConfig — scales with level
+  static const double blastRadius = 60.0; // explosion kill radius in px
   static const double _w          = 14.0; // 20% slimmer
   static const double _h          = 66.0;
 
@@ -113,45 +115,11 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
       _spawnSmokePuff();
     }
 
-    // ── Check proximity to Iranian missiles / warheads every frame ──
-    // Do this BEFORE the target-reached check so we never miss a hit
-    if (!_isDestroyed && _elapsed > _arcDuration * 0.3) {
-      for (final child in gameRef.children) {
-        if (_isDestroyed) break;
-        if (child is IranianMissile && !child.isDestroyed && !child.isRemoving) {
-          if ((position - child.position).length < 75.0) {
-            _isDestroyed = true;
-            onHit(child);
-            removeFromParent();
-            return;
-          }
-        }
-        if (child is FragmentationWarhead && !child.isDestroyed && !child.isRemoving) {
-          if ((position - child.position).length < 75.0) {
-            _isDestroyed = true;
-            onHit(child);
-            removeFromParent();
-            return;
-          }
-        }
-        if (child is FragmentationBomb && !child.isDestroyed && !child.isRemoving) {
-          if ((position - child.position).length < 65.0) {
-            _isDestroyed = true;
-            onHit(child);
-            removeFromParent();
-            return;
-          }
-        }
-      }
-    }
-
-    // ── Check if we've reached the target position (miss case) ──
+    // ── Explode when reaching target — blast radius kills anything nearby ──
     final distToTarget = (position - targetPosition).length;
-    if (distToTarget < 22.0 && _elapsed > _arcDuration * 0.5) {
+    if (distToTarget < 12.0 && _elapsed > _arcDuration * 0.5) {
       _isDestroyed = true;
-      onMiss();
-      gameRef.add(MissExplosion(position: targetPosition.clone()));
-      removeFromParent();
+      _explodeAtTarget();
       return;
     }
 
@@ -163,6 +131,58 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
       onMiss();
       removeFromParent();
     }
+  }
+
+  /// Returns closest distance from a point to a missile's body segment.
+  /// Missile center is at [missilePos], half-length is [halfLen],
+  /// traveling in direction [angle] (atan2 of velocity).
+  double _distToBody(Vector2 point, Vector2 missilePos, double halfLen, double angle) {
+    // The missile body runs ALONG the travel direction
+    final axisX = cos(angle);  // travel direction unit vector
+    final axisY = sin(angle);
+    final dx = point.x - missilePos.x;
+    final dy = point.y - missilePos.y;
+    // Project onto travel axis — clamp to body length
+    final proj = (dx * axisX + dy * axisY).clamp(-halfLen, halfLen);
+    // Closest point on body centerline
+    final closestX = missilePos.x + axisX * proj;
+    final closestY = missilePos.y + axisY * proj;
+    return Vector2(closestX - point.x, closestY - point.y).length;
+  }
+
+  /// Explode at target position. Anything within blastRadius of the target is destroyed.
+  /// For missiles we check distance to the closest point on the body, not just center.
+  void _explodeAtTarget() {
+    bool hitAnything = false;
+
+    for (final child in gameRef.children.toList()) {
+      if (child is IranianMissile && !child.isDestroyed && !child.isRemoving) {
+        // Iranian: h=148 → halfLen=74
+        final d = _distToBody(targetPosition, child.position, 74.0, child.travelAngle);
+        if (d <= blastRadius) { onHit(child); hitAnything = true; }
+
+      } else if (child is FragmentationWarhead && !child.isDestroyed && !child.isRemoving) {
+        // Warhead: h=148 → halfLen=74
+        final d = _distToBody(targetPosition, child.position, 74.0, child.travelAngle);
+        if (d <= blastRadius) { onHit(child); hitAnything = true; }
+
+      } else if (child is FragmentationBomb && !child.isDestroyed && !child.isRemoving) {
+        // Bomb: smaller, use center distance
+        if ((targetPosition - child.position).length <= blastRadius) {
+          onHit(child); hitAnything = true;
+        }
+      } else if (child is UavComponent && !child.isDestroyed && !child.isRemoving) {
+        // UAV: wide flat shape, use center + generous radius
+        if ((targetPosition - child.position).length <= blastRadius + 20) {
+          onHit(child); hitAnything = true;
+        }
+      }
+    }
+
+    if (!hitAnything) onMiss();
+
+    gameRef.add(MissExplosion(position: targetPosition.clone()));
+    removeFromParent();
   }
 
   void _spawnSmokePuff() {
