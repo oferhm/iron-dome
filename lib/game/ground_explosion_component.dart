@@ -4,29 +4,24 @@ import 'package:flutter/material.dart';
 
 class GroundExplosionComponent extends PositionComponent with HasGameRef {
   double _elapsed = 0;
-  static const double _duration  = 2.0;
-  static const double _baseSize  = 560.0;
-  static const double _ringMax   = 220.0;
-  static const double _flashMax  = 100.0;
-  static const double _smokeBase = 110.0;
-  static const double _smokeGrow = 200.0;
+  static const double _duration = 2.2;
+  static const double _size     = 420.0; // smaller radius
 
-  final Random _random = Random();
-  late final List<_FireParticle> _fireParticles;
-  late final List<_Shard>        _shards;
+  final Random _rng = Random();
+  late final List<_Fire>  _fires;
+  late final List<_Shard> _shards;
 
   GroundExplosionComponent({required Vector2 position})
       : super(
           position: position,
-          size: Vector2.all(_baseSize),
+          size: Vector2.all(_size),
           anchor: Anchor.center,
         );
 
   @override
   void onLoad() {
-    _fireParticles = List.generate(70, (_) => _FireParticle(_random));
-    // 28 shards — big visible chunks flying sideways
-    _shards = List.generate(28, (i) => _Shard(_random, i));
+    _fires  = List.generate(90,  (_) => _Fire(_rng));   // more fire
+    _shards = List.generate(70,  (i) => _Shard(_rng, i)); // more shards, upward/sideways
   }
 
   @override
@@ -34,204 +29,152 @@ class GroundExplosionComponent extends PositionComponent with HasGameRef {
     super.update(dt);
     _elapsed += dt;
     if (_elapsed >= _duration) removeFromParent();
-    for (final p in _fireParticles) p.update(dt);
-    for (final s in _shards)        s.update(dt);
+    for (final f in _fires)  f.update(dt);
+    for (final s in _shards) s.update(dt);
   }
 
   @override
   void render(Canvas canvas) {
-    final progress = (_elapsed / _duration).clamp(0.0, 1.0);
-    final cx = size.x / 2;
-    final cy = size.y / 2;
+    final prog = (_elapsed / _duration).clamp(0.0, 1.0);
+    final cx   = size.x / 2;
+    final cy   = size.y / 2;
 
-    // ── Ground shockwave rings (flat ellipses) ──
-    final ringOp = (1.0 - progress).clamp(0.0, 1.0);
-    final shockW = _ringMax * 2.4 * progress;
-    final shockH = _ringMax * 0.40 * progress;
-    canvas.drawOval(
-      Rect.fromCenter(center: Offset(cx, cy), width: shockW, height: shockH),
-      Paint()
-        ..color = Colors.orangeAccent.withOpacity(ringOp * 0.65)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 14 * (1 - progress),
-    );
-    if (progress > 0.10) {
-      canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx, cy),
-          width: _ringMax * 2.8 * (progress - 0.10),
-          height: _ringMax * 0.32 * (progress - 0.10)),
+    // ── Initial bright flash (no ring) ──
+    if (prog < 0.25) {
+      final op = (1 - prog / 0.25).clamp(0.0, 1.0);
+      canvas.drawCircle(Offset(cx, cy), 90 * (1 - prog),
         Paint()
-          ..color = Colors.orange.withOpacity(ringOp * 0.35)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 7 * (1 - progress),
-      );
+          ..color = Colors.white.withOpacity(op * 0.95)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18));
+      canvas.drawCircle(Offset(cx, cy), 130 * (1 - prog),
+        Paint()
+          ..color = Colors.yellow.withOpacity(op * 0.70)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30));
     }
 
     // ── Ground scorch mark ──
-    if (progress > 0.05) {
-      final scorchR = _ringMax * 0.6 * progress.clamp(0, 0.5) / 0.5;
+    if (prog > 0.05) {
+      final r = (80 * prog.clamp(0.0, 0.5) / 0.5);
       canvas.drawOval(
-        Rect.fromCenter(center: Offset(cx, cy),
-            width: scorchR * 2.2, height: scorchR * 0.5),
-        Paint()..color = const Color(0xFF1a0a00).withOpacity(0.55 * (1 - progress * 0.5)),
-      );
+        Rect.fromCenter(center: Offset(cx, cy), width: r * 2.0, height: r * 0.4),
+        Paint()..color = const Color(0xFF1a0800).withOpacity(0.6 * (1 - prog * 0.6)));
     }
 
-    // ── Initial flash ──
-    if (progress < 0.30) {
-      final flashOp = (1 - progress / 0.30).clamp(0.0, 1.0);
-      canvas.drawCircle(Offset(cx, cy), _flashMax * 2.2 * (1 - progress),
-        Paint()
-          ..color = Colors.yellow.withOpacity(flashOp * 0.60)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 28));
-      canvas.drawCircle(Offset(cx, cy), _flashMax * (1 - progress),
-        Paint()
-          ..color = Colors.white.withOpacity(flashOp * 0.95)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14));
-    }
-
-    // ── Fire particles ──
-    for (final p in _fireParticles) {
-      final alpha = (p.life * (1 - progress)).clamp(0.0, 1.0);
-      if (alpha <= 0.01) continue;
+    // ── Fire particles (upward biased) ──
+    for (final f in _fires) {
+      final alpha = (f.life * (1 - prog)).clamp(0.0, 1.0);
+      if (alpha < 0.01) continue;
       canvas.drawCircle(
-        Offset(cx + p.x, cy + p.y),
-        p.radius * (1 - progress * 0.35),
+        Offset(cx + f.x, cy + f.y),
+        f.r * (1 - prog * 0.4),
         Paint()
-          ..color = Color.lerp(Colors.yellow, Colors.deepOrange, p.colorT)!
-              .withOpacity(alpha)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+          ..color = Color.lerp(
+            const Color(0xFFffee00), const Color(0xFFff3300), f.t)!
+              .withOpacity(alpha * 0.9)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, f.r * 0.5),
       );
     }
 
-    // ── Shards — drawn large and bright ──
+    // ── Shards — flying sideways and upward ──
     for (final s in _shards) {
       if (s.life <= 0.01) continue;
-      // Shards stay visible longer than fire
-      final alpha = (s.life * pow(1 - progress, 0.5)).clamp(0.0, 1.0).toDouble();
-      if (alpha <= 0.01) continue;
+      final alpha = (s.life * pow(1 - prog, 0.4)).clamp(0.0, 1.0).toDouble();
+      if (alpha < 0.01) continue;
 
       canvas.save();
       canvas.translate(cx + s.x, cy + s.y);
-      canvas.rotate(s.rotation);
+      canvas.rotate(s.rot);
 
-      // Shard color: hot orange → dark grey as it cools
-      final coolT  = (s.age / s.maxAge).clamp(0.0, 1.0);
-      final shardColor = Color.lerp(
-        const Color(0xFFff8800), const Color(0xFF444444), coolT)!.withOpacity(alpha);
+      final cool  = (s.age / s.maxAge).clamp(0.0, 1.0);
+      final color = Color.lerp(
+          const Color(0xFFffaa00), const Color(0xFF555555), cool)!
+            .withOpacity(alpha);
 
-      // Main shard body — bigger and more angular
+      // Elongated shard shape
       final path = Path()
-        ..moveTo(0, -s.length * 0.55)
-        ..lineTo(s.width * 0.55, -s.length * 0.1)
-        ..lineTo(s.width * 0.4, s.length * 0.55)
-        ..lineTo(0, s.length * 0.35)
-        ..lineTo(-s.width * 0.4, s.length * 0.55)
-        ..lineTo(-s.width * 0.55, -s.length * 0.1)
+        ..moveTo(0, -s.len * 0.6)
+        ..lineTo(s.wid * 0.5, 0)
+        ..lineTo(0, s.len * 0.6)
+        ..lineTo(-s.wid * 0.5, 0)
         ..close();
 
-      canvas.drawPath(path, Paint()..color = shardColor);
-
-      // Hot glow around fresh shards
-      if (coolT < 0.5) {
+      canvas.drawPath(path, Paint()..color = color);
+      if (cool < 0.4) {
         canvas.drawPath(path, Paint()
-          ..color = Colors.orangeAccent.withOpacity(alpha * (1 - coolT * 2) * 0.6)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, s.width * 0.8));
+          ..color = Colors.orangeAccent.withOpacity(alpha * (1 - cool * 2.5) * 0.7)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, s.wid * 0.9));
       }
-
-      // White glint edge on very fresh shards
-      if (coolT < 0.25) {
-        canvas.drawPath(path, Paint()
-          ..color = Colors.white.withOpacity(alpha * (1 - coolT * 4) * 0.55)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2);
-      }
-
       canvas.restore();
     }
 
-    // ── Rising smoke column ──
-    if (progress > 0.18) {
-      final smokeT  = ((progress - 0.18) / 0.82).clamp(0.0, 1.0);
-      final smokeOp = (smokeT * (1 - smokeT) * 3.0).clamp(0.0, 0.75);
-      final smokeR  = _smokeBase + _smokeGrow * smokeT;
-      canvas.drawCircle(
-        Offset(cx, cy - smokeR * 0.65),
-        smokeR * 0.72,
+    // ── Rising smoke ──
+    if (prog > 0.15) {
+      final t  = ((prog - 0.15) / 0.85).clamp(0.0, 1.0);
+      final op = (t * (1 - t) * 3.5).clamp(0.0, 0.70);
+      final r  = 60 + 200 * t;
+      canvas.drawCircle(Offset(cx, cy - r * 0.9), r * 0.65,
         Paint()
-          ..color = Colors.grey.shade600.withOpacity(smokeOp)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20),
-      );
-      canvas.drawCircle(
-        Offset(cx + smokeR * 0.18, cy - smokeR * 0.42),
-        smokeR * 0.52,
-        Paint()
-          ..color = Colors.grey.shade800.withOpacity(smokeOp * 0.75)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
-      );
+          ..color = Colors.grey.shade600.withOpacity(op)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18));
     }
   }
 }
 
-class _FireParticle {
-  final double angle;
-  final double speed;
-  final double radius;
-  final double colorT;
-  double x = 0, y = 0;
-  double life = 1.0;
+class _Fire {
+  final double angle, speed, r, t;
+  double x = 0, y = 0, life = 1.0;
 
-  _FireParticle(Random r)
-      : angle  = (r.nextDouble() - 0.5) * pi * 1.6 - pi / 2,
-        speed  = 60 + r.nextDouble() * 150,
-        radius = 8 + r.nextDouble() * 22,
-        colorT = r.nextDouble();
+  _Fire(Random rng)
+    // Upward bias: spread -160° to -20° (mostly upward cone)
+    : angle = -(pi * 0.11 + rng.nextDouble() * pi * 0.78),
+      speed = 70 + rng.nextDouble() * 180,
+      r     = 7 + rng.nextDouble() * 20,
+      t     = rng.nextDouble();
 
   void update(double dt) {
     x += cos(angle) * speed * dt;
-    y += sin(angle) * speed * dt + 25 * dt;
-    life = (life - dt * 0.75).clamp(0.0, 1.0);
+    y += sin(angle) * speed * dt;
+    // slight gravity pull downward
+    y += 30 * dt;
+    life = (life - dt * 0.8).clamp(0.0, 1.0);
   }
 }
 
 class _Shard {
-  final double angle;
-  double speed;          // mutable for air resistance
-  final double length;
-  final double width;
-  double rotation;
-  final double rotSpeed;
-  final double maxAge;
-  double age = 0;
-  double x = 0, y = 0;
-  double life = 1.0;
+  final double angle, len, wid, rotSpeed, maxAge;
+  double speed, rot, age = 0, x = 0, y = 0, life = 1.0;
 
-  _Shard(Random r, int index)
-      : angle    = _shardAngle(r, index),
-        speed    = 100 + r.nextDouble() * 240,
-        length   = 14 + r.nextDouble() * 26,  // bigger shards
-        width    = 6  + r.nextDouble() * 10,
-        rotation = r.nextDouble() * 2 * pi,
-        rotSpeed = (r.nextDouble() - 0.5) * 18,
-        maxAge   = 0.8 + r.nextDouble() * 0.8;
+  _Shard(Random r, int i)
+    : angle    = _angle(r, i),
+      speed    = 160 + r.nextDouble() * 320,
+      len      = 16 + r.nextDouble() * 30,
+      wid      = 5  + r.nextDouble() * 10,
+      rot      = r.nextDouble() * 2 * pi,
+      rotSpeed = (r.nextDouble() - 0.5) * 22,
+      maxAge   = 0.7 + r.nextDouble() * 0.9;
 
-  static double _shardAngle(Random r, int index) {
-    // Spread across 4 quadrants but bias sideways-upward
-    final sector = index % 4;
-    switch (sector) {
-      case 0: return -pi + r.nextDouble() * (pi * 0.6);         // hard left
-      case 1: return -pi * 0.4 + r.nextDouble() * (pi * 0.4);  // upper-left arc
-      case 2: return pi * 0.0 + r.nextDouble() * (pi * 0.4);   // upper-right arc
-      default: return pi * 0.4 + r.nextDouble() * (pi * 0.6);  // hard right
+  // Shards fly sideways and upward — no downward shards
+  static double _angle(Random r, int i) {
+    // Distribute in upper 3 quadrants only (left/up/right), not downward
+    final normalized = i / 70.0;
+    if (normalized < 0.35) {
+      // Left side: -175° to -95°
+      return -(pi * 0.53 + r.nextDouble() * pi * 0.44);
+    } else if (normalized < 0.65) {
+      // Straight up with spread: -100° to -80°
+      return -(pi * 0.44 + r.nextDouble() * pi * 0.11);
+    } else {
+      // Right side: -85° to -5°
+      return -(r.nextDouble() * pi * 0.47);
     }
   }
 
   void update(double dt) {
     age += dt;
     x += cos(angle) * speed * dt;
-    y += sin(angle) * speed * dt + 80 * dt * (age / maxAge);
-    rotation += rotSpeed * dt;
-    speed *= (1.0 - dt * 1.8);                // air resistance
-    life = (1.0 - age / maxAge).clamp(0.0, 1.0);
+    y += sin(angle) * speed * dt + 60 * dt * (age / maxAge); // gravity
+    rot   += rotSpeed * dt;
+    speed *= (1 - dt * 2.0); // air resistance
+    life   = (1 - age / maxAge).clamp(0.0, 1.0);
   }
 }

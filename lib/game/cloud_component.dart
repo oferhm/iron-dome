@@ -3,97 +3,155 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'game_config.dart';
 
-/// A cloud drawn with overlapping circles — fluffy, semi-transparent,
-/// drifts left. Rendered at high priority above all missiles.
+/// Feathery cloud — built entirely from blurred circles.
+/// No hard edges anywhere: every circle has a blur radius of at least 40% of its own radius.
 class CloudComponent extends PositionComponent with HasGameRef {
   static final Random _rng = Random();
 
-  final List<_Puff> _puffs;
+  final List<_Blob> _blobs;
   final double _speed;
   final double _opacity;
-  final double _cloudWidth;
-  final double _cloudHeight;
+  final double _totalW;
 
   CloudComponent._({
     required Vector2 position,
-    required List<_Puff> puffs,
+    required List<_Blob> blobs,
     required double speed,
     required double opacity,
-    required double cloudWidth,
-    required double cloudHeight,
-  })  : _puffs       = puffs,
-        _speed       = speed,
-        _opacity     = opacity,
-        _cloudWidth  = cloudWidth,
-        _cloudHeight = cloudHeight,
-        super(
-          position:  position,
-          size:      Vector2(cloudWidth, cloudHeight),
-          priority:  200, // always on top
-        );
+    required double totalW,
+    required double totalH,
+  })  : _blobs   = blobs,
+        _speed   = speed,
+        _opacity = opacity,
+        _totalW  = totalW,
+        super(position: position, size: Vector2(totalW, totalH), priority: 200);
 
-  static Future<void> preload() async {} // no image needed
+  static Future<void> preload() async {}
 
   factory CloudComponent.random({
     required double screenW,
     required double screenH,
     bool spawnOffScreen = false,
+    double staggerX = 0,
   }) {
-    final rng   = _rng;
-    final speed = 12 + rng.nextDouble() * 22;
+    final rng    = _rng;
+    final speed  = 10 + rng.nextDouble() * 18;
+    final scale  = 0.7 + rng.nextDouble() * 1.0;
 
-    // Build a realistic multi-puff cloud shape like the reference photo
-    // 1–3 cloud "clusters" stacked vertically
-    final clusterCount = 1 + rng.nextInt(3);
-    final puffs        = <_Puff>[];
-    final baseScale    = 0.7 + rng.nextDouble() * 0.8;
+    final blobs  = <_Blob>[];
+    double maxX  = 0;
+    double maxY  = 0;
 
-    double yOffset = 0;
-    double maxRight = 0;
+    // 1–3 cloud clusters stacked
+    final clusters = 1 + rng.nextInt(3);
+    double yBase = 0;
 
-    for (int c = 0; c < clusterCount; c++) {
-      final clusterW = (100 + rng.nextDouble() * 160) * baseScale;
-      final clusterH = (40 + rng.nextDouble() * 55) * baseScale;
-      final xShift   = (rng.nextDouble() - 0.3) * clusterW * 0.4;
+    for (int ci = 0; ci < clusters; ci++) {
+      final cw   = (80 + rng.nextDouble() * 130) * scale;
+      final ch   = (30 + rng.nextDouble() * 45)  * scale;
+      final xOff = (rng.nextDouble() * 0.35) * cw;
 
-      // Each cluster = 5–8 overlapping circles forming a fluffy shape
-      final puffCount = 5 + rng.nextInt(4);
-      for (int i = 0; i < puffCount; i++) {
-        final frac  = i / puffCount;
-        final px    = xShift + frac * clusterW * 0.85;
-        // Vary height: taller in middle
-        final py    = yOffset + clusterH * (0.1 + 0.5 * (1 - 4 * pow(frac - 0.5, 2).toDouble()).clamp(0, 1));
-        final r     = clusterH * (0.35 + rng.nextDouble() * 0.35);
-        // Top puffs slightly brighter
-        final bright = i < puffCount ~/ 2 ? 1.0 : 0.88;
-        puffs.add(_Puff(px, py, r, bright));
-        if (px + r > maxRight) maxRight = px + r;
+      // ── Outermost wisps: very large, very blurred, very transparent ──
+      for (int i = 0; i < 12; i++) {
+        final a = rng.nextDouble() * 2 * pi;
+        final d = cw * (0.38 + rng.nextDouble() * 0.28);
+        final r = ch * (0.5 + rng.nextDouble() * 0.5);
+        blobs.add(_Blob(
+          x: xOff + cw*0.5 + cos(a)*d,
+          y: yBase + ch*0.5 + sin(a)*d*0.45,
+          r: r,
+          opacity: 0.04 + rng.nextDouble() * 0.06,
+          blur: r * 0.90, // nearly fully blurred
+        ));
       }
-      // Bottom flat base
-      final baseY = yOffset + clusterH * 0.75;
-      puffs.add(_Puff(xShift + clusterW * 0.1, baseY, clusterH * 0.28, 0.82));
-      puffs.add(_Puff(xShift + clusterW * 0.5, baseY, clusterH * 0.32, 0.82));
-      puffs.add(_Puff(xShift + clusterW * 0.85, baseY, clusterH * 0.26, 0.82));
 
-      yOffset += clusterH * 0.60; // overlap clusters vertically
+      // ── Mid feather ring ──
+      for (int i = 0; i < 14; i++) {
+        final a = rng.nextDouble() * 2 * pi;
+        final d = cw * (0.18 + rng.nextDouble() * 0.22);
+        final r = ch * (0.35 + rng.nextDouble() * 0.35);
+        blobs.add(_Blob(
+          x: xOff + cw*0.5 + cos(a)*d,
+          y: yBase + ch*0.5 + sin(a)*d*0.45,
+          r: r,
+          opacity: 0.08 + rng.nextDouble() * 0.10,
+          blur: r * 0.70,
+        ));
+      }
+
+      // ── Inner body: medium blurred ──
+      for (int i = 0; i < 10; i++) {
+        final frac = i / 10.0;
+        final px   = xOff + frac * cw * 0.88 + rng.nextDouble() * cw * 0.12;
+        final py   = yBase + ch * (0.12 + 0.55*sin(frac*pi)) + rng.nextDouble()*ch*0.18;
+        final r    = ch * (0.32 + rng.nextDouble() * 0.28);
+        blobs.add(_Blob(
+          x: px, y: py, r: r,
+          opacity: 0.22 + rng.nextDouble() * 0.18,
+          blur: r * 0.45,
+        ));
+      }
+
+      // ── Core body: less blurred, gives body substance ──
+      for (int i = 0; i < 7; i++) {
+        final frac = i / 7.0;
+        final px   = xOff + cw*(0.08 + frac*0.82) + rng.nextDouble()*cw*0.08;
+        final py   = yBase + ch*(0.15 + 0.50*sin(frac*pi)) + rng.nextDouble()*ch*0.12;
+        final r    = ch * (0.25 + rng.nextDouble() * 0.20);
+        blobs.add(_Blob(
+          x: px, y: py, r: r,
+          opacity: 0.30 + rng.nextDouble() * 0.20,
+          blur: r * 0.30,
+        ));
+      }
+
+      // ── Top bright highlights ──
+      for (int i = 0; i < 5; i++) {
+        final px = xOff + cw*(0.12 + i*0.18) + rng.nextDouble()*cw*0.10;
+        final py = yBase + ch*(0.08 + rng.nextDouble()*0.22);
+        final r  = ch * (0.18 + rng.nextDouble() * 0.14);
+        blobs.add(_Blob(
+          x: px, y: py, r: r,
+          opacity: 0.38 + rng.nextDouble() * 0.18,
+          blur: r * 0.18, // least blur = brightest/sharpest on top
+          bright: true,
+        ));
+      }
+
+      // ── Shadow underside (grey-blue) ──
+      for (int i = 0; i < 5; i++) {
+        final px = xOff + cw*(0.08 + i*0.20) + rng.nextDouble()*cw*0.12;
+        final py = yBase + ch*(0.68 + rng.nextDouble()*0.20);
+        final r  = ch * (0.20 + rng.nextDouble() * 0.14);
+        blobs.add(_Blob(
+          x: px, y: py, r: r,
+          opacity: 0.10 + rng.nextDouble() * 0.10,
+          blur: r * 0.55,
+          shadow: true,
+        ));
+      }
+
+      final right = xOff + cw;
+      final bottom = yBase + ch * 1.1;
+      if (right > maxX) maxX = right;
+      if (bottom > maxY) maxY = bottom;
+      yBase += ch * 0.52;
     }
 
-    final w = maxRight + 20;
-    final h = yOffset + 60.0;
+    final w = maxX + 24;
+    final h = maxY + 18;
 
-    // Upper third of screen
-    final y = screenH * 0.01 + rng.nextDouble() * screenH * 0.28;
-    final x = spawnOffScreen
-        ? screenW + 20 + rng.nextDouble() * 200
-        : rng.nextDouble() * (screenW + w) - w * 0.5;
+    // Always spawn from the right
+    final x = screenW + 30 + staggerX + rng.nextDouble() * 60;
+    final y = screenH * 0.01 + rng.nextDouble() * screenH * 0.27;
 
     return CloudComponent._(
-      position:    Vector2(x, y),
-      puffs:       puffs,
-      speed:       speed,
-      opacity:     GameConfig.cloudOpacity,
-      cloudWidth:  w,
-      cloudHeight: h,
+      position: Vector2(x, y),
+      blobs: blobs,
+      speed: speed,
+      opacity: GameConfig.cloudOpacity,
+      totalW: w,
+      totalH: h,
     );
   }
 
@@ -103,49 +161,50 @@ class CloudComponent extends PositionComponent with HasGameRef {
     position.x -= _speed * dt;
   }
 
-  bool get isOffScreen => position.x < -(_cloudWidth + 60);
+  bool get isOffScreen => position.x < -(_totalW + 80);
 
   @override
   void render(Canvas canvas) {
-    // Draw shadow puffs first (grey-blue tint at bottom, like reference)
-    for (final p in _puffs) {
-      if (p.brightness < 0.9) {
-        canvas.drawCircle(
-          Offset(p.x + 2, p.y + 3),
-          p.r,
-          Paint()..color = const Color(0xFFb8cce0).withOpacity(_opacity * 0.55),
-        );
-      }
-    }
-
-    // Draw main white puffs
-    for (final p in _puffs) {
-      final col = Color.lerp(
-        const Color(0xFFddeeff), // light blue-white (shadow areas)
-        Colors.white,            // bright white (lit areas)
-        p.brightness,
-      )!;
+    // Draw all blobs — sorted: shadows first, then body, then highlights
+    // Shadow layer
+    for (final b in _blobs.where((b) => b.shadow)) {
       canvas.drawCircle(
-        Offset(p.x, p.y),
-        p.r,
-        Paint()..color = col.withOpacity(_opacity * (0.85 + p.brightness * 0.15)),
+        Offset(b.x + 1.5, b.y + 2.5),
+        b.r,
+        Paint()
+          ..color = const Color(0xFF9ab5cc).withOpacity(_opacity * b.opacity)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, b.blur),
       );
     }
-
-    // Soft edge highlight on top puffs
-    for (final p in _puffs) {
-      if (p.brightness > 0.95) {
-        canvas.drawCircle(
-          Offset(p.x - p.r * 0.2, p.y - p.r * 0.2),
-          p.r * 0.45,
-          Paint()..color = Colors.white.withOpacity(_opacity * 0.50),
-        );
-      }
+    // Outer wisps + mid feather + body (all white/near-white)
+    for (final b in _blobs.where((b) => !b.shadow && !b.bright)) {
+      canvas.drawCircle(
+        Offset(b.x, b.y),
+        b.r,
+        Paint()
+          ..color = Colors.white.withOpacity(_opacity * b.opacity)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, b.blur),
+      );
+    }
+    // Top highlights last (on top)
+    for (final b in _blobs.where((b) => b.bright)) {
+      canvas.drawCircle(
+        Offset(b.x, b.y),
+        b.r,
+        Paint()
+          ..color = Colors.white.withOpacity(_opacity * b.opacity)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, b.blur),
+      );
     }
   }
 }
 
-class _Puff {
-  final double x, y, r, brightness;
-  const _Puff(this.x, this.y, this.r, this.brightness);
+class _Blob {
+  final double x, y, r, opacity, blur;
+  final bool bright, shadow;
+  const _Blob({
+    required this.x, required this.y, required this.r,
+    required this.opacity, required this.blur,
+    this.bright = false, this.shadow = false,
+  });
 }

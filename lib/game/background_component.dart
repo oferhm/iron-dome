@@ -9,7 +9,7 @@ class BackgroundComponent extends Component with HasGameRef {
   @override
   Future<void> onLoad() async {
     try {
-      final image = await Flame.images.load('city_skyline.jpg');
+      final image = await Flame.images.load('city_skyline.png');
       _skylineSprite = Sprite(image);
       _loaded = true;
     } catch (e) {

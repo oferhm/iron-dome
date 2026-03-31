@@ -1,9 +1,12 @@
 import 'dart:math';
+import 'game_config.dart';
+import 'iron_dome_game.dart';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'iranian_missile.dart';
 import 'fragmentation_bomb.dart';
+import 'fragmentation_warhead.dart';
 import 'smoke_trail_component.dart';
 import 'explosion_component.dart';
 
@@ -17,8 +20,8 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
   final void Function(dynamic hit) onHit;
   final VoidCallback onMiss;
 
-  static const double _speed      = 680.0;
-  static const double _w          = 17.0;
+  // Speed from GameConfig — scales with level
+  static const double _w          = 14.0; // 20% slimmer
   static const double _h          = 66.0;
 
   // Arc behaviour
@@ -32,6 +35,7 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
 
   // Initial launch direction
   late Vector2 _launchDir;
+  late double  _speed;
 
   bool _isDestroyed = false;
   bool get isDestroyed => _isDestroyed;
@@ -56,9 +60,11 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
   @override
   Future<void> onLoad() async {
     // Launch in exactly the same direction the launcher arm points
+    final speed = GameConfig.interceptorBaseSpeed * GameConfig.speedMultiplier((gameRef as IronDomeGame).difficulty.level);
     _launchDir = Vector2(cos(launchAngle), sin(launchAngle)).normalized();
-    _velocity  = _launchDir * _speed;
+    _velocity  = _launchDir * speed;
     _angle     = launchAngle;
+    _speed     = speed;
 
     add(RectangleHitbox(size: Vector2(_w * 0.9, _h * 0.9)));
   }
@@ -107,12 +113,43 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
       _spawnSmokePuff();
     }
 
-    // ── Check if we've reached the target position ──
+    // ── Check proximity to Iranian missiles / warheads every frame ──
+    // Do this BEFORE the target-reached check so we never miss a hit
+    if (!_isDestroyed && _elapsed > _arcDuration * 0.3) {
+      for (final child in gameRef.children) {
+        if (_isDestroyed) break;
+        if (child is IranianMissile && !child.isDestroyed && !child.isRemoving) {
+          if ((position - child.position).length < 75.0) {
+            _isDestroyed = true;
+            onHit(child);
+            removeFromParent();
+            return;
+          }
+        }
+        if (child is FragmentationWarhead && !child.isDestroyed && !child.isRemoving) {
+          if ((position - child.position).length < 75.0) {
+            _isDestroyed = true;
+            onHit(child);
+            removeFromParent();
+            return;
+          }
+        }
+        if (child is FragmentationBomb && !child.isDestroyed && !child.isRemoving) {
+          if ((position - child.position).length < 65.0) {
+            _isDestroyed = true;
+            onHit(child);
+            removeFromParent();
+            return;
+          }
+        }
+      }
+    }
+
+    // ── Check if we've reached the target position (miss case) ──
     final distToTarget = (position - targetPosition).length;
-    if (distToTarget < 18.0 && _elapsed > _arcDuration * 0.5) {
+    if (distToTarget < 22.0 && _elapsed > _arcDuration * 0.5) {
       _isDestroyed = true;
-      // Always explode at target — full size if hit something, small if miss
-      onMiss(); // notify game (score/etc handled by proximity collision above)
+      onMiss();
       gameRef.add(MissExplosion(position: targetPosition.clone()));
       removeFromParent();
       return;

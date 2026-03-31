@@ -6,13 +6,18 @@ A new Flutter project.
 
 flutter run -d emulator-5554
 
-This project is a starting point for a Flutter application.
+# for sound from emulator
+# first add to path
+$env:PATH += ";$env:LOCALAPPDATA\Android\Sdk\platform-tools"
 
-A few resources to get you started if this is your first Flutter project:
+adb shell settings put system volume_music_speaker 15
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+# if not working try 
+$adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
+& $adb shell settings put system volume_music_speaker 15
+& $adb shell settings put system volume_music 15  
+& $adb shell media volume --stream 3 --set 15
+& $adb shell media volume --stream 1 --set 15
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+# debug for sound
+flutter run -d emulator-5554 --verbose 2>&1 | findstr /i "sfx\|bgm\|load\|audio\|sound"

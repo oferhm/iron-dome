@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'game_config.dart';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
@@ -64,7 +65,7 @@ class FragmentationBomb extends PositionComponent
     position += _velocity * dt;
 
     final groundY = gameRef.size.y;
-    if (!_isDestroyed && position.y >= groundY * 0.78) {
+    if (!_isDestroyed && position.y >= groundY * GameConfig.groundExplosionHeightFraction) {
       _isDestroyed = true;
       gameRef.add(GroundExplosionComponent(position: position.clone()));
       onReachedGround();

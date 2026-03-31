@@ -1,4 +1,6 @@
 import 'dart:math';
+import 'game_config.dart';
+import 'iron_dome_game.dart';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
@@ -16,7 +18,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
   final List<FlameParticle> _flameParticles = [];
   final Random _rng = Random();
 
-  static const double _baseSpeed = 126.0;
+  // Speed and angle from GameConfig
   static const double _angleDeg  = 85.0; // +5° more sideways
   static final  double _angleRad  = _angleDeg * pi / 180.0;
 
@@ -25,7 +27,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
 
   bool _isDestroyed = false;
 
-  static const double _w = 36.0;
+  static const double _w = 29.0; // 20% slimmer
   static const double _h = 148.0; // +30% longer
 
   IranianMissile({
@@ -40,7 +42,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
 
   @override
   Future<void> onLoad() async {
-    final speed = _baseSpeed * speedMultiplier;
+    final speed = GameConfig.iranianBaseSpeed * GameConfig.speedMultiplier((gameRef as IronDomeGame).difficulty.level);
     _velocity    = Vector2(cos(_angleRad) * speed * 0.50, sin(_angleRad) * speed);
     _travelAngle = atan2(_velocity.y, _velocity.x);
 
@@ -67,7 +69,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
     final groundY = gameRef.size.y;
 
     // explode when 10% from ground
-    if (!_isDestroyed && position.y >= groundY * 0.78) {
+    if (!_isDestroyed && position.y >= groundY * GameConfig.groundExplosionHeightFraction) {
       _explodeAtGround();
       return;
     }

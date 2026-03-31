@@ -3,6 +3,8 @@ import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'game_config.dart';
+import 'iron_dome_game.dart';
+import 'sound_manager.dart';
 import 'missile_flame.dart';
 import 'package:flame/flame.dart';
 import 'fragmentation_bomb.dart';
@@ -27,9 +29,7 @@ class FragmentationWarhead extends PositionComponent
   bool get isDestroyed => _isDestroyed;
   void markDestroyed() => _isDestroyed = true;
 
-  static const double _angleDeg = 85.0;
-  static final double _angleRad = _angleDeg * pi / 180.0;
-  static const double _baseSpeed = 126.0;
+  // Angle and speed from GameConfig
 
   late Vector2 _velocity;
   late double _travelAngle;
@@ -45,7 +45,7 @@ class FragmentationWarhead extends PositionComponent
   bool _isOpening = false;
 
   // Same size as Iranian missile
-  static const double _w = 36.0;
+  static const double _w = 29.0; // 20% slimmer
   static const double _h = 148.0;
 
   final List<Vector2> _trail = [];
@@ -63,8 +63,8 @@ class FragmentationWarhead extends PositionComponent
 
   @override
   Future<void> onLoad() async {
-    final speed = _baseSpeed * speedMultiplier;
-    _velocity    = Vector2(cos(_angleRad) * speed * 0.50, sin(_angleRad) * speed);
+    final speed = GameConfig.iranianBaseSpeed * GameConfig.speedMultiplier((gameRef as IronDomeGame).difficulty.level);
+    _velocity    = Vector2(cos(GameConfig.iranianAngleRad) * speed * 0.35, sin(GameConfig.iranianAngleRad) * speed);
     _travelAngle = atan2(_velocity.y, _velocity.x);
 
     add(RectangleHitbox(
@@ -73,7 +73,7 @@ class FragmentationWarhead extends PositionComponent
   }
 
   // How many bombs to release: 2 for levels 1-4, 3 for level 5+
-  int get _bombCount => level >= 5 ? 3 : 2;
+  int get _bombCount => level >= GameConfig.fragmentationBombsLevel5 ? GameConfig.fragmentationBombsLevel5 : 2;
 
   @override
   void update(double dt) {
@@ -92,6 +92,7 @@ class FragmentationWarhead extends PositionComponent
 
     final splitDelay = GameConfig.fragmentationSplitDelay + 0.3;
     if (!_hasSplit && _elapsed >= splitDelay - 0.35) {
+      if (!_isOpening) SoundManager().playGunLoad();
       _isOpening = true;
     }
     if (_isOpening && !_hasSplit) {

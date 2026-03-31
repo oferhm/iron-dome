@@ -16,9 +16,10 @@ dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/city_skyline.jpg
+    - assets/images/city_skyline.png
+    - assets/images/antenna.png
     - assets/images/iranian_missile.webp
-    - assets/images/iron_dome_launcher.jpg
+    - assets/images/iron_dome_launcher.png
     - assets/images/crosshair.webp
     - assets/images/doors.png
     - assets/images/uav.png
