@@ -19,22 +19,22 @@ class LauncherComponent extends Component with HasGameRef {
 
   // Tubes tip: upper-right area of image (~68% right, 8% down)
   Vector2 get missileExitPoint => Vector2(
-    _pos.x + _sz.x * 0.40,
-    _pos.y + _sz.y * 0.01,
+    _pos.x + _sz.x * 0.68,
+    _pos.y + _sz.y * 0.02,
   );
 
-  double get launchAngle => -2.5;
+  double get launchAngle => -2.10; // ~120° upper-left, matches real Iron Dome tubes
 
   Vector2 get launcherArmBase => Vector2(
-    _pos.x + _sz.x * 0.52,
-    _pos.y + _sz.y * 0.42,
+    _pos.x + _sz.x * 0.72,
+    _pos.y + _sz.y * 0.22,
   );
 
   @override
   void render(Canvas canvas) {
     final screen = gameRef.size;
-    _sz  = Vector2(250, 180);
-    _pos = Vector2(screen.x - _sz.x - 80, screen.y - _sz.y - 20);
+    _sz  = Vector2(360, 298);
+    _pos = Vector2(screen.x - _sz.x - 60, screen.y - _sz.y - 0);
 
     if (_img != null) {
       final src = Rect.fromLTWH(0, 0,
@@ -42,21 +42,13 @@ class LauncherComponent extends Component with HasGameRef {
       final dst = Rect.fromLTWH(_pos.x, _pos.y, _sz.x, _sz.y);
 
       // PNG already has transparency — draw directly
-      canvas.drawImageRect(_img!, src, dst, Paint()
-      ..isAntiAlias = true
-      ..colorFilter = const ColorFilter.matrix([
-        // R      G      B      A    offset
-         1.3,   0.0,   0.0,   0.0,  10.0,  // boost red
-         0.0,   1.4,   0.0,   0.0,  10.0,  // boost green more (military green)
-         0.0,   0.0,   1.1,   0.0,   0.0,  // slight blue
-         0.0,   0.0,   0.0,   1.0,   0.0,
-      ]));
+      canvas.drawImageRect(_img!, src, dst, Paint()..isAntiAlias = true);
 
       // Ground shadow
       canvas.drawOval(
         Rect.fromLTWH(_pos.x + 20, _pos.y + _sz.y - 10, _sz.x - 40, 18),
         Paint()
-          ..color = const ui.Color.fromARGB(255, 236, 232, 232).withOpacity(0.40)
+          ..color = Colors.black.withOpacity(0.40)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
       );
     }

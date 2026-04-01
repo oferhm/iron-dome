@@ -35,6 +35,8 @@ class GameConfig {
   static const double uavDiveBaseSpeed = 100.0;
 
   // ── Interceptor missile ──────────────────────────────────────────────────
+  /// Blast radius of interceptor explosion (px) — anything within this is destroyed
+  static const double interceptorBlastRadius = 52.0;
   static const double interceptorBaseSpeed = 520.0;
 
   // ── Speed scaling per level ──────────────────────────────────────────────
@@ -43,7 +45,12 @@ class GameConfig {
   }
 
   // ── Ground explosion height ──────────────────────────────────────────────
-  static const double groundExplosionHeightFraction = 0.70;
+  // ── Ground height (shared by ALL objects — missiles, UAV, shields) ─────────
+  /// Fraction of screen height at which ground-level events happen.
+  /// 0.70 = 70% down the screen.
+  static const double groundHeightFraction = 0.70;
+  // Alias for backward compat
+  static const double groundExplosionHeightFraction = groundHeightFraction;
 
   // ── Fragmentation 3-bomb split level ────────────────────────────────────
   static const int fragmentationBombsLevel5 = 3;
@@ -78,7 +85,8 @@ class GameConfig {
 
   // ── Shield power-up ─────────────────────────────────────────────────────
   /// Probability: 0 shields (50%), 1 shield (35%), 2 shields (10%), 3 shields (5%)
-  static const List<double> shieldSpawnWeights = [0.50, 0.35, 0.10, 0.05];
+  // static const List<double> shieldSpawnWeights = [0.50, 0.35, 0.10, 0.05];
+  static const List<double> shieldSpawnWeights = [0.00, 0.00, 0.50, 0.50];
 
   /// Shield fall speed (px/sec)
   static const double shieldBaseSpeed = 100.0;

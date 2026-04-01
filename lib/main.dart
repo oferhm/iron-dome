@@ -372,11 +372,7 @@ class _HudOverlay extends StatelessWidget {
                 _HudText('FIRED      ${game.shotsFired}', small: true, color: Colors.white60),
               ])),
             const SizedBox(height: 4),
-            ValueListenableBuilder<int>(valueListenable: game.livesNotifier,
-              builder: (_, lives, __) => Row(
-                children: List.generate(lives.clamp(0, 9), (_) =>
-                  const Padding(padding: EdgeInsets.only(right: 3),
-                    child: Icon(Icons.location_city, color: Colors.lightBlueAccent, size: 20))))),
+            _LivesWidget(game: game),
             const SizedBox(height: 4),
             _EfficiencyWidget(game: game),
           ],
@@ -446,6 +442,174 @@ class _HudText extends StatelessWidget {
   Widget build(BuildContext context) => Text(text, style: TextStyle(
     color: color, fontSize: small ? 13 : 20, fontWeight: FontWeight.bold,
     letterSpacing: 1.2, shadows: const [Shadow(color: Colors.black, blurRadius: 4)]));
+}
+
+
+// ── Lives widget with shield fly-in animation and blink on hit ────────────
+class _LivesWidget extends StatefulWidget {
+  final IronDomeGame game;
+  const _LivesWidget({required this.game});
+  @override State<_LivesWidget> createState() => _LivesWidgetState();
+}
+
+class _LivesWidgetState extends State<_LivesWidget>
+    with TickerProviderStateMixin {
+  bool _blinking = false;
+  int  _lastShieldHit = 0;
+  int  _lastLivesHit  = 0;
+
+  // Each fly-in: controller + unique key
+  final List<_FlyIn> _flyIns = [];
+
+  @override
+  void initState() {
+    super.initState();
+    widget.game.shieldHitNotifier.addListener(_onShieldHit);
+    widget.game.livesHitNotifier.addListener(_onLivesHit);
+  }
+
+  @override
+  void dispose() {
+    widget.game.shieldHitNotifier.removeListener(_onShieldHit);
+    widget.game.livesHitNotifier.removeListener(_onLivesHit);
+    for (final f in _flyIns) f.ctrl.dispose();
+    super.dispose();
+  }
+
+  void _onShieldHit() {
+    if (widget.game.shieldHitNotifier.value == _lastShieldHit) return;
+    _lastShieldHit = widget.game.shieldHitNotifier.value;
+    final ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1500));
+    final flyIn = _FlyIn(ctrl: ctrl, id: DateTime.now().microsecondsSinceEpoch);
+    setState(() => _flyIns.add(flyIn));
+    ctrl.forward().whenComplete(() {
+      if (mounted) setState(() => _flyIns.remove(flyIn));
+      ctrl.dispose();
+    });
+  }
+
+  void _onLivesHit() {
+    if (widget.game.livesHitNotifier.value == _lastLivesHit) return;
+    _lastLivesHit = widget.game.livesHitNotifier.value;
+    if (_blinking) return;
+    _doBlink(3);
+  }
+
+  void _doBlink(int remaining) {
+    if (!mounted || remaining <= 0) {
+      if (mounted) setState(() => _blinking = false);
+      return;
+    }
+    setState(() => _blinking = true);
+    Future.delayed(const Duration(milliseconds: 220), () {
+      if (!mounted) return;
+      setState(() => _blinking = false);
+      Future.delayed(const Duration(milliseconds: 130), () => _doBlink(remaining - 1));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: widget.game.livesNotifier,
+      builder: (ctx, lives, __) {
+        // Use LayoutBuilder to get position of lives row on screen
+        return Stack(clipBehavior: Clip.none, children: [
+          // ── Lives row ──
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 80),
+            decoration: _blinking ? BoxDecoration(
+              color: Colors.redAccent.withOpacity(0.45),
+              borderRadius: BorderRadius.circular(6),
+              boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.8),
+                  blurRadius: 16, spreadRadius: 3)],
+            ) : const BoxDecoration(),
+            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+            child: Row(mainAxisSize: MainAxisSize.min,
+              children: List.generate(lives.clamp(0, 9), (_) =>
+                Padding(padding: const EdgeInsets.only(right: 3),
+                  child: Image.asset('assets/images/shield.png',
+                      width: 18, height: 24, fit: BoxFit.contain)))),
+          ),
+
+          // ── Flying shields ──
+          for (final f in _flyIns)
+            AnimatedBuilder(
+              animation: f.ctrl,
+              builder: (_, __) {
+                final t = CurvedAnimation(
+                    parent: f.ctrl, curve: Curves.easeInCubic).value;
+
+                // Get the actual shield hit position from the game
+                final hitPos = widget.game.shieldHitPosition;
+
+                // End: near (0,0) in this local Stack = the lives row
+                const endX = 4.0;
+                const endY = -80.0;
+
+                double flyT = 0;
+                double scale, opacity;
+
+                if (t < 0.30) {
+                  // Phase 1: appear at hit location, big glow
+                  flyT    = 0;
+                  scale   = 2.0 + (t / 0.30) * 0.5; // grows 2.0→2.5
+                  opacity = t / 0.30;                  // fade in
+                } else {
+                  // Phase 2: fly from hit position to HUD
+                  flyT    = (t - 0.30) / 0.70;
+                  scale   = 2.5 - flyT * 1.8;          // 2.5→0.7
+                  opacity = 1.0 - flyT * 0.15;
+                }
+
+                final x = hitPos.dx - 14 + (endX - (hitPos.dx - 14)) * flyT;
+                final y = hitPos.dy - 18 + (endY - (hitPos.dy - 18)) * flyT;
+
+                final glowRadius = (1.0 - flyT) * 20.0 + 6;
+
+                return Positioned(
+                  left: x, top: y,
+                  child: Opacity(
+                    opacity: opacity.clamp(0.0, 1.0),
+                    child: Transform.scale(scale: scale.clamp(0.5, 2.5),
+                      alignment: Alignment.center,
+                      child: Container(
+                        width: 28, height: 36,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(4),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.purpleAccent.withOpacity(
+                                  (0.9 * (1 - flyT)).clamp(0,1)),
+                              blurRadius: glowRadius * 1.8,
+                              spreadRadius: glowRadius * 0.5,
+                            ),
+                            BoxShadow(
+                              color: Colors.white.withOpacity(
+                                  (0.6 * (1 - flyT * 1.5)).clamp(0,1)),
+                              blurRadius: glowRadius * 0.8,
+                            ),
+                          ],
+                        ),
+                        child: Image.asset('assets/images/shield.png',
+                            fit: BoxFit.contain),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+        ]);
+      },
+    );
+  }
+}
+
+class _FlyIn {
+  final AnimationController ctrl;
+  final int id;
+  _FlyIn({required this.ctrl, required this.id});
 }
 
 class _EfficiencyWidget extends StatelessWidget {

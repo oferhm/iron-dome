@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'game_config.dart';
 import 'dart:ui' as ui;
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
@@ -59,8 +60,8 @@ class ShieldComponent extends PositionComponent with HasGameRef, CollisionCallba
     position.y += _speed * dt;
     position.x += sin(_wobble) * _wobbleAmp * dt; // gentle side-to-side drift
 
-    // Reached bottom — vanish silently (no penalty)
-    if (position.y > gameRef.size.y + 40) {
+    // Reached ground height — vanish silently (same height as missile explosions)
+    if (position.y >= gameRef.size.y * GameConfig.groundHeightFraction) {
       _isDestroyed = true;
       removeFromParent();
     }

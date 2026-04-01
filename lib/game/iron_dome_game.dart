@@ -31,6 +31,9 @@ class IronDomeGame extends FlameGame
     with TapCallbacks, DragCallbacks, HasCollisionDetection {
 
   final ValueNotifier<int>  scoreNotifier       = ValueNotifier(0);
+  final ValueNotifier<int>  shieldHitNotifier   = ValueNotifier(0); // increments on shield catch → triggers fly-in anim
+  Offset shieldHitPosition = Offset.zero; // last intercepted shield screen position
+  final ValueNotifier<int>  livesHitNotifier    = ValueNotifier(0); // increments on ground hit → triggers blink
   final ValueNotifier<int>  livesNotifier       = ValueNotifier(3);
   final ValueNotifier<int>  shotsFiredNotifier  = ValueNotifier(0);
   final ValueNotifier<int>  hitsNotifier        = ValueNotifier(0);
@@ -142,7 +145,6 @@ class IronDomeGame extends FlameGame
   }
 
   void _scheduleShields() {
-    // Decide how many shields to spawn based on weights
     final roll = _random.nextDouble();
     int count = 0;
     double cumulative = 0;
@@ -150,12 +152,19 @@ class IronDomeGame extends FlameGame
       cumulative += GameConfig.shieldSpawnWeights[i];
       if (roll < cumulative) { count = i; break; }
     }
+    if (count == 0) return;
 
-    // Stagger their appearance randomly within the level pause window
+    // Spread shields randomly across 8–30 seconds of gameplay
+    // so they don't cluster together
+    final List<int> delays = [];
     for (int i = 0; i < count; i++) {
-      final delay = 500 + _random.nextInt(3000); // 0.5s – 3.5s
+      delays.add(4000 + _random.nextInt(26000)); // 4s – 30s
+    }
+    delays.sort(); // spread in order so they don't all come at once
+
+    for (final delay in delays) {
       async.Future.delayed(Duration(milliseconds: delay), () {
-        if (!_gameOver) _spawnShield();
+        if (!_gameOver && !_inLevelPause) _spawnShield();
       });
     }
   }
@@ -445,8 +454,13 @@ class IronDomeGame extends FlameGame
   void _onShieldHit(ShieldComponent target) {
     if (target.isRemoving || target.isDestroyed) return;
     target.markDestroyed();
-    target.onIntercepted();
-    // Visual: small blue/purple explosion
+    // Store screen position for the fly-in animation
+    shieldHitPosition = Offset(target.position.x, target.position.y);
+    shieldHitNotifier.value++;
+    // Delay life grant until animation completes (~1.2s)
+    Future.delayed(const Duration(milliseconds: 1200), () {
+      target.onIntercepted();
+    });
     add(ExplosionComponent(position: target.position.clone()));
     target.removeFromParent();
   }
@@ -455,6 +469,7 @@ class IronDomeGame extends FlameGame
     if (_gameOver) return;
     sound.playHitCity();
     sound.playBigBomb();
+    livesHitNotifier.value++;  // triggers blink in HUD
     livesNotifier.value--;
     if (livesNotifier.value <= 0) _triggerGameOver();
   }
@@ -479,6 +494,8 @@ class IronDomeGame extends FlameGame
     _uavTimer?.cancel();
     sound.restoreSfx();
     scoreNotifier.value      = 0;
+    shieldHitNotifier.value  = 0;
+    livesHitNotifier.value   = 0;
     livesNotifier.value      = 3;
     shotsFiredNotifier.value = 0;
     hitsNotifier.value       = 0;

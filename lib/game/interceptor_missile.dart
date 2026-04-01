@@ -23,7 +23,7 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
   final VoidCallback onMiss;
 
   // Speed from GameConfig — scales with level
-  static const double blastRadius = 60.0; // explosion kill radius in px
+  static double get blastRadius => GameConfig.interceptorBlastRadius;
   static const double _w          = 14.0; // 20% slimmer
   static const double _h          = 66.0;
 
