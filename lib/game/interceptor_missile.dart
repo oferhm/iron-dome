@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'iranian_missile.dart';
 import 'fragmentation_bomb.dart';
 import 'uav_component.dart';
+import 'shield_component.dart';
 import 'fragmentation_warhead.dart';
 import 'smoke_trail_component.dart';
 import 'explosion_component.dart';
@@ -172,8 +173,12 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
           onHit(child); hitAnything = true;
         }
       } else if (child is UavComponent && !child.isDestroyed && !child.isRemoving) {
-        // UAV: wide flat shape, use center + generous radius
         if ((targetPosition - child.position).length <= blastRadius + 20) {
+          onHit(child); hitAnything = true;
+        }
+      } else if (child is ShieldComponent && !child.isDestroyed && !child.isRemoving) {
+        // Shield: use center distance — smaller target, reward precision
+        if ((targetPosition - child.position).length <= blastRadius + 10) {
           onHit(child); hitAnything = true;
         }
       }

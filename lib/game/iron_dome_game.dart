@@ -24,6 +24,7 @@ import 'game_config.dart';
 import 'cloud_component.dart';
 import 'antenna_component.dart';
 import 'uav_component.dart';
+import 'shield_component.dart';
 import 'launch_smoke_component.dart';
 
 class IronDomeGame extends FlameGame
@@ -73,6 +74,7 @@ class IronDomeGame extends FlameGame
     // Assets preloaded by loading screen; just start game music
     await sound.startGameMusic();
     await AntennaComponent.preload();
+    await ShieldComponent.preload();
     await LauncherComponent.preload();
     await highScores.load();
     difficulty.reset();
@@ -137,6 +139,37 @@ class IronDomeGame extends FlameGame
       // Always reschedule regardless
       if (!_gameOver) _scheduleUav();
     });
+  }
+
+  void _scheduleShields() {
+    // Decide how many shields to spawn based on weights
+    final roll = _random.nextDouble();
+    int count = 0;
+    double cumulative = 0;
+    for (int i = 0; i < GameConfig.shieldSpawnWeights.length; i++) {
+      cumulative += GameConfig.shieldSpawnWeights[i];
+      if (roll < cumulative) { count = i; break; }
+    }
+
+    // Stagger their appearance randomly within the level pause window
+    for (int i = 0; i < count; i++) {
+      final delay = 500 + _random.nextInt(3000); // 0.5s – 3.5s
+      async.Future.delayed(Duration(milliseconds: delay), () {
+        if (!_gameOver) _spawnShield();
+      });
+    }
+  }
+
+  void _spawnShield() {
+    if (_gameOver) return;
+    final x = size.x * (0.15 + _random.nextDouble() * 0.70); // avoid edges
+    add(ShieldComponent(
+      position: Vector2(x, -40),
+      onIntercepted: () {
+        livesNotifier.value += 1;
+        debugPrint('Shield intercepted! Lives: ${livesNotifier.value}');
+      },
+    ));
   }
 
   void _updateClouds() {
@@ -248,6 +281,7 @@ class IronDomeGame extends FlameGame
     livesNotifier.value += 1;
     sound.playSiren();
     sound.playLevelUp();
+    _scheduleShields();
     _inLevelPause = true;
     _spawnTimer?.cancel();
 
@@ -325,6 +359,7 @@ class IronDomeGame extends FlameGame
         else if (target is FragmentationWarhead) _onWarheadHit(target);
         else if (target is FragmentationBomb)    _onBombHit(target);
         else if (target is UavComponent)         _onUavHit(target);
+        else if (target is ShieldComponent)      _onShieldHit(target);
       },
       onMiss:         () {},
     ));
@@ -407,6 +442,15 @@ class IronDomeGame extends FlameGame
     if (levelChanged) _onLevelUp();
   }
 
+  void _onShieldHit(ShieldComponent target) {
+    if (target.isRemoving || target.isDestroyed) return;
+    target.markDestroyed();
+    target.onIntercepted();
+    // Visual: small blue/purple explosion
+    add(ExplosionComponent(position: target.position.clone()));
+    target.removeFromParent();
+  }
+
   void _onMissileReachedGround() {
     if (_gameOver) return;
     sound.playHitCity();
@@ -431,6 +475,8 @@ class IronDomeGame extends FlameGame
   void restartGame() {
     _gameOver     = false;
     _inLevelPause = false;
+    _spawnTimer?.cancel();
+    _uavTimer?.cancel();
     sound.restoreSfx();
     scoreNotifier.value      = 0;
     livesNotifier.value      = 3;
@@ -441,21 +487,30 @@ class IronDomeGame extends FlameGame
     overlays.remove('GameOver');
     overlays.add('HUD');
 
-    children.whereType<IranianMissile>().toList().forEach((m) => m.removeFromParent());
-    children.whereType<InterceptorMissile>().toList().forEach((m) => m.removeFromParent());
-    children.whereType<ExplosionComponent>().toList().forEach((e) => e.removeFromParent());
-    children.whereType<GroundExplosionComponent>().toList().forEach((e) => e.removeFromParent());
-    children.whereType<WaveBannerComponent>().toList().forEach((b) => b.removeFromParent());
-    children.whereType<FragmentationWarhead>().toList().forEach((f) => f.removeFromParent());
-    children.whereType<CloudComponent>().toList().forEach((c) => c.removeFromParent());
-    _uavTimer?.cancel();
-    children.whereType<UavComponent>().toList().forEach((u) => u.removeFromParent());
-    children.whereType<FragmentationBomb>().toList().forEach((f) => f.removeFromParent());
-    children.whereType<SmokePuff>().toList().forEach((s) => s.removeFromParent());
-    children.whereType<PoliceLightComponent>().toList().forEach((p) => p.removeFromParent());
-    crosshair?.removeFromParent();
+    // Remove all game objects in one pass to avoid multiple expensive iterations
+    final toRemove = children.where((c) =>
+      c is IranianMissile ||
+      c is InterceptorMissile ||
+      c is ExplosionComponent ||
+      c is GroundExplosionComponent ||
+      c is WaveBannerComponent ||
+      c is FragmentationWarhead ||
+      c is FragmentationBomb ||
+      c is CloudComponent ||
+      c is UavComponent ||
+      c is ShieldComponent ||
+      c is SmokePuff ||
+      c is PoliceLightComponent ||
+      c is LaunchSmokeComponent ||
+      c is CrosshairComponent
+    ).toList();
+
+    for (final c in toRemove) { c.removeFromParent(); }
     crosshair = null;
 
-    _startSpawning();
+    // Defer spawning to next frame so removal completes first
+    Future.microtask(() {
+      if (!_gameOver) _startSpawning();
+    });
   }
 }

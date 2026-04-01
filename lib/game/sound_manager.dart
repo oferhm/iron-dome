@@ -84,9 +84,12 @@ class SoundManager {
 
   void _play(String file, {double volume = 1.0}) {
     if (!_sfxEnabled || !_sfxLoaded || _sfxMuted) return;
-    FlameAudio.play(file, volume: volume).catchError((e) {
-      debugPrint('SFX fail $file: $e');
-      return null;
+    Future(() async {
+      try {
+        await FlameAudio.play(file, volume: volume);
+      } catch (e) {
+        debugPrint('SFX fail: $file');
+      }
     });
   }
 

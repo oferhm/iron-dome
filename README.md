@@ -21,3 +21,8 @@ $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 
 # debug for sound
 flutter run -d emulator-5554 --verbose 2>&1 | findstr /i "sfx\|bgm\|load\|audio\|sound"
+
+# After clean cache
+flutter clean
+flutter pub get
+flutter run -d emulator-5554

@@ -7,6 +7,8 @@ import 'game/high_score_manager.dart';
 import 'game/sound_manager.dart';
 import 'loading_screen.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const IronDomeApp());
@@ -22,6 +24,7 @@ class IronDomeApp extends StatelessWidget {
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
       fontFamily: 'monospace',
     ),
+    navigatorKey: navigatorKey,
     home: const LoadingScreen(),
   );
 }
@@ -383,11 +386,11 @@ class _HudOverlay extends StatelessWidget {
         Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
           Row(mainAxisSize: MainAxisSize.min, children: [
             GestureDetector(
-              onTap: () async {
-                await SoundManager().stopBgm();
-                Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+              onTap: () {
+                SoundManager().stopBgm();
+                navigatorKey.currentState?.pushAndRemoveUntil(
                   MaterialPageRoute(builder: (_) => const LobbyMode()),
-                  (route) => false,
+                  (_) => false,
                 );
               },
               child: Container(
@@ -583,24 +586,16 @@ class _HighScoreTable extends StatelessWidget {
   }
 }
 
-class _LobbyBtn extends StatefulWidget {
+class _LobbyBtn extends StatelessWidget {
   const _LobbyBtn();
-  @override State<_LobbyBtn> createState() => _LobbyBtnState();
-}
-class _LobbyBtnState extends State<_LobbyBtn> {
-  bool _tapped = false;
   @override
   Widget build(BuildContext context) {
-    return _Btn('LOBBY', Icons.home, Colors.blueGrey, () async {
-      if (_tapped) return;
-      setState(() => _tapped = true);
-      await SoundManager().stopBgm();
-      if (context.mounted) {
-        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LobbyMode()),
-          (route) => false,
-        );
-      }
+    return _Btn('LOBBY', Icons.home, Colors.blueGrey, () {
+      SoundManager().stopBgm(); // fire and forget
+      navigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LobbyMode()),
+        (_) => false,
+      );
     });
   }
 }

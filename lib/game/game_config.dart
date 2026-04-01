@@ -76,6 +76,13 @@ class GameConfig {
     return 1;
   }
 
+  // ── Shield power-up ─────────────────────────────────────────────────────
+  /// Probability: 0 shields (50%), 1 shield (35%), 2 shields (10%), 3 shields (5%)
+  static const List<double> shieldSpawnWeights = [0.50, 0.35, 0.10, 0.05];
+
+  /// Shield fall speed (px/sec)
+  static const double shieldBaseSpeed = 100.0;
+
   // ── Clouds ───────────────────────────────────────────────────────────────
   static const bool   cloudsEnabled  = true;
   static const int    cloudsMinLevel = 2;

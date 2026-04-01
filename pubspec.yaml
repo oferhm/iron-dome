@@ -18,6 +18,7 @@ flutter:
   assets:
     - assets/images/city_skyline.png
     - assets/images/antenna.png
+    - assets/images/shield.png
     - assets/images/iranian_missile.webp
     - assets/images/iron_dome_launcher.png
     - assets/images/crosshair.webp
