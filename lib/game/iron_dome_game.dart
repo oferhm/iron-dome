@@ -17,6 +17,7 @@ import 'police_light_component.dart';
 import 'smoke_trail_component.dart';
 import 'difficulty_manager.dart';
 import 'sound_manager.dart';
+import 'package:flame_audio/flame_audio.dart';
 import 'high_score_manager.dart';
 import 'fragmentation_warhead.dart';
 import 'fragmentation_bomb.dart';
@@ -59,12 +60,17 @@ class IronDomeGame extends FlameGame
   CrosshairComponent? crosshair;
 
   final Random  _random       = Random();
+  int _activeSmokePuffs = 0; // fast counter — avoids whereType scan
   async.Timer?  _spawnTimer;
   async.Timer?  _uavTimer;
   bool          _inLevelPause = false;
   bool          _gameOver     = false;
   Vector2       _crosshairPosition = Vector2.zero();
 
+
+  void onSmokePuffAdded()   { _activeSmokePuffs++; }
+  void onSmokePuffRemoved() { if (_activeSmokePuffs > 0) _activeSmokePuffs--; }
+  bool get smokeAtCap       => _activeSmokePuffs >= 40; // hard cap at 40
 
   @override
   Color backgroundColor() => const Color(0xFF0a1628);
@@ -74,13 +80,17 @@ class IronDomeGame extends FlameGame
     await super.onLoad();
     camera.viewfinder.anchor = Anchor.topLeft;
 
-    // Assets preloaded by loading screen; just start game music
-    await sound.startGameMusic();
-    await AntennaComponent.preload();
-    await ShieldComponent.preload();
-    await LauncherComponent.preload();
-    await highScores.load();
+    // Run all preloads in parallel — much faster than sequential awaits
+    await Future.wait([
+      AntennaComponent.preload(),
+      ShieldComponent.preload(),
+      LauncherComponent.preload(),
+      highScores.load(),
+    ]);
     difficulty.reset();
+
+    // Start music without awaiting — don't block rendering on audio init
+    sound.startGameMusic();
 
     await add(BackgroundComponent());
     add(AntennaComponent());
@@ -94,11 +104,37 @@ class IronDomeGame extends FlameGame
       });
   }
 
+  // ── Performance monitoring ──────────────────────────────────────────────
+  double _perfLogTimer = 0;
+  static const double _perfLogInterval = 3.0; // log every 3 seconds
+
   @override
   void update(double dt) {
     super.update(dt);
 
     if (_gameOver) return;
+
+    // ── Perf logging every 3s ──
+    _perfLogTimer += dt;
+    if (_perfLogTimer >= _perfLogInterval) {
+      _perfLogTimer = 0;
+      final total     = children.length;
+      final smokes    = children.whereType<SmokePuff>().length;
+      final explosions= children.whereType<ExplosionComponent>().length;
+      final groundExp = children.whereType<GroundExplosionComponent>().length;
+      final missiles  = children.whereType<IranianMissile>().length
+                      + children.whereType<FragmentationWarhead>().length
+                      + children.whereType<FragmentationBomb>().length;
+      final uavs      = children.whereType<UavComponent>().length;
+      final clouds    = children.whereType<CloudComponent>().length;
+      final intercept = children.whereType<InterceptorMissile>().length;
+      final shields   = children.whereType<ShieldComponent>().length;
+      debugPrint('── PERF ── total=$total | '
+        'smoke=$smokes | explo=$explosions+$groundExp | '
+        'missiles=$missiles | uav=$uavs | clouds=$clouds | '
+        'interceptors=$intercept | shields=$shields | '
+        'dt=${(dt*1000).toStringAsFixed(1)}ms');
+    }
 
     // ── Time-based level progression ──
     if (!_inLevelPause) {
@@ -109,7 +145,7 @@ class IronDomeGame extends FlameGame
     // ── Cloud management ──
     if (GameConfig.cloudsEnabled &&
         difficulty.level >= GameConfig.cloudsMinLevel) {
-      _updateClouds();
+      _updateClouds(dt);
     }
 
     // Collision handled inside InterceptorMissile._explodeAtTarget() via blast radius.
@@ -191,37 +227,37 @@ class IronDomeGame extends FlameGame
     ));
   }
 
-  void _updateClouds() {
+  double _cloudUpdateTimer = 0;
+
+  void _updateClouds(double dt) {
+    // Only update clouds once per second — not every frame
+    _cloudUpdateTimer += dt;
+    if (_cloudUpdateTimer < 1.0) return;
+    _cloudUpdateTimer = 0;
+
     final clouds = children.whereType<CloudComponent>().toList();
+    final current = clouds.length;
 
-    // Remove clouds that drifted off the left edge
+    // Remove clouds that drifted off screen
     for (final cloud in clouds) {
-      if (cloud.isOffScreen) {
-        cloud.removeFromParent();
-        // Immediately respawn one from the right edge to keep count constant
-        final newCloud = CloudComponent.random(screenW: size.x, screenH: size.y, spawnOffScreen: true);
-        newCloud.priority = 200;
-        add(newCloud);
-      }
+      if (cloud.isOffScreen) cloud.removeFromParent();
     }
 
-    // Cloud count varies randomly: sometimes 0, sometimes up to cloudCount*2
-    final targetCount = _random.nextInt(GameConfig.cloudCount * 2 + 1); // 0 to cloudCount*2
-    final current = children.whereType<CloudComponent>().length;
-    // Remove excess if we have too many
-    if (current > targetCount) {
-      final excess = children.whereType<CloudComponent>().take(current - targetCount).toList();
-      for (final c in excess) c.removeFromParent();
-    }
-    for (int i = current; i < targetCount; i++) {
-      final newCloud = CloudComponent.random(
-        screenW: size.x,
-        screenH: size.y,
-        spawnOffScreen: true,
-        staggerX: i * (size.x / GameConfig.cloudCount),
-      );
-      newCloud.priority = 200;
-      add(newCloud);
+    // Target: fixed count from config, no random multiplier
+    final target = GameConfig.cloudCount; // was cloudCount*2 random — caused buildup
+    final afterRemove = children.whereType<CloudComponent>().length;
+
+    if (afterRemove < target) {
+      for (int i = afterRemove; i < target; i++) {
+        final c = CloudComponent.random(screenW: size.x, screenH: size.y, spawnOffScreen: true);
+        c.priority = 200;
+        add(c);
+      }
+    } else if (afterRemove > target) {
+      // Remove excess
+      children.whereType<CloudComponent>()
+          .take(afterRemove - target).toList()
+          .forEach((c) => c.removeFromParent());
     }
   }
 
@@ -490,60 +526,39 @@ class IronDomeGame extends FlameGame
     if (livesNotifier.value <= 0) _triggerGameOver();
   }
 
+
+  /// Full teardown — stops everything immediately.
+  /// Call before navigating to lobby or starting new game.
+  void fullCleanup() {
+    _gameOver     = true;
+    _inLevelPause = false;
+    _activeSmokePuffs = 0;
+
+    _spawnTimer?.cancel(); _spawnTimer = null;
+    _uavTimer?.cancel();   _uavTimer   = null;
+
+    // Kill all audio
+    sound.hardMuteAll();
+
+    // Pause game engine — stops update() and render()
+    pauseEngine();
+
+    // Remove all children
+    children.toList().forEach((c) {
+      try { c.removeFromParent(); } catch (_) {}
+    });
+    crosshair = null;
+  }
+
   void _triggerGameOver() {
     _gameOver = true;
-    _spawnTimer?.cancel();
-    _uavTimer?.cancel();
+    _spawnTimer?.cancel(); _spawnTimer = null;
+    _uavTimer?.cancel();   _uavTimer   = null;
     sound.playGameOver();
-    // Stop SFX after game over sound, keep music
-    Future.delayed(const Duration(seconds: 1), () => sound.stopSfx());
     highScores.submitScore(score, difficulty.level).then((_) {
       overlays.add('GameOver');
       overlays.remove('HUD');
     });
   }
 
-  void restartGame() {
-    _gameOver     = false;
-    _inLevelPause = false;
-    _spawnTimer?.cancel();
-    _uavTimer?.cancel();
-    sound.restoreSfx();
-    scoreNotifier.value      = 0;
-    shieldHitNotifier.value  = 0;
-    livesHitNotifier.value   = 0;
-    livesNotifier.value      = 3;
-    shotsFiredNotifier.value = 0;
-    hitsNotifier.value       = 0;
-    difficulty.reset();
-
-    overlays.remove('GameOver');
-    overlays.add('HUD');
-
-    // Remove all game objects in one pass to avoid multiple expensive iterations
-    final toRemove = children.where((c) =>
-      c is IranianMissile ||
-      c is InterceptorMissile ||
-      c is ExplosionComponent ||
-      c is GroundExplosionComponent ||
-      c is WaveBannerComponent ||
-      c is FragmentationWarhead ||
-      c is FragmentationBomb ||
-      c is CloudComponent ||
-      c is UavComponent ||
-      c is ShieldComponent ||
-      c is SmokePuff ||
-      c is PoliceLightComponent ||
-      c is LaunchSmokeComponent ||
-      c is CrosshairComponent
-    ).toList();
-
-    for (final c in toRemove) { c.removeFromParent(); }
-    crosshair = null;
-
-    // Defer spawning to next frame so removal completes first
-    Future.microtask(() {
-      if (!_gameOver) _startSpawning();
-    });
-  }
 }

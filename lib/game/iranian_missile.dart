@@ -15,7 +15,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
 
   final List<Vector2> _trail = [];
   double _flameTime = 0.0;
-  final List<FlameParticle> _flameParticles = [];
+
   final Random _rng = Random();
 
   // Speed and angle from GameConfig
@@ -27,8 +27,8 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
 
   bool _isDestroyed = false;
 
-  static const double _w = 25.0; 
-  static const double _h = 148.0; 
+  static const double _w = 29.0; // 20% slimmer
+  static const double _h = 148.0; // +30% longer
 
   IranianMissile({
     required this.startPosition,
@@ -58,7 +58,7 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
     if (_isDestroyed) return;
 
     _flameTime += dt;
-    if (!_isDestroyed) updateFlameParticles(_flameParticles, size.x, dt, _rng);
+
     if (_trail.isEmpty || (_trail.last - position).length > 10) {
       _trail.add(position.clone());
       if (_trail.length > 22) _trail.removeAt(0);
@@ -170,6 +170,6 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
     canvas.drawOval(Rect.fromLTWH(w*0.33, h*0.76, w*0.34, h*0.05), Paint()..color = const Color(0xFF222820));
 
     // ── Shared slim fast flame + spark trail ──
-    drawMissileFlame(canvas, w, h, t, _flameParticles, nozzleY: 0.79);
+    drawMissileFlame(canvas, w, h, t, const [], nozzleY: 0.79);
   }
 }

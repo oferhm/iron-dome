@@ -181,6 +181,8 @@ class _LobbyModeState extends State<LobbyMode>
   Future<void> _startAudio() async {
     if (!_audioStarted) {
       _audioStarted = true;
+      // Small delay ensures game BGM is fully stopped before lobby music starts
+      await Future.delayed(const Duration(milliseconds: 300));
       await sound.startLobbyMusic();
     }
   }
@@ -237,10 +239,10 @@ class _LobbyModeState extends State<LobbyMode>
             )),
             const SizedBox(height: 36),
             _LobbyToggle(icon: Icons.music_note, label: 'Game Music',
-                notifier: sound.musicEnabledNotifier, onToggle: sound.toggleMusic),
+                notifier: sound.musicEnabledNotifier, onToggle: () { debugPrint('[UI] MUSIC toggled at ${DateTime.now()}'); sound.toggleMusic(); }),
             const SizedBox(height: 14),
             _LobbyToggle(icon: Icons.volume_up, label: 'Sound Effects',
-                notifier: sound.sfxEnabledNotifier, onToggle: sound.toggleSfx),
+                notifier: sound.sfxEnabledNotifier, onToggle: () { debugPrint('[UI] SFX toggled at ${DateTime.now()}'); sound.toggleSfx(); }),
             const SizedBox(height: 40),
             GestureDetector(onTap: _exit, child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 12),
@@ -380,10 +382,12 @@ class _HudOverlay extends StatelessWidget {
         const Spacer(),
         // Right — exit + settings
         Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Row(mainAxisSize: MainAxisSize.min, children: [
+          Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
+            // Exit button on top
             GestureDetector(
               onTap: () {
-                SoundManager().stopBgm();
+                debugPrint('[UI] EXIT clicked at ${DateTime.now().toIso8601String()}');
+                game.fullCleanup();
                 navigatorKey.currentState?.pushAndRemoveUntil(
                   MaterialPageRoute(builder: (_) => const LobbyMode()),
                   (_) => false,
@@ -392,16 +396,18 @@ class _HudOverlay extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(6)),
+                  color: const Color(0xFF2a2a3a),  // dark navy, not red
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.white24)),
                 child: const Text('EXIT', style: TextStyle(
-                    color: Colors.white, fontSize: 11,
+                    color: Colors.white70, fontSize: 11,
                     fontWeight: FontWeight.bold, letterSpacing: 1)),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(height: 6),
+            // Settings below
             GestureDetector(
-              onTap: () => _showSettings(context),
+              onTap: () { debugPrint('[UI] SETTINGS clicked at ${DateTime.now()}'); _showSettings(context); },
               child: const Padding(padding: EdgeInsets.all(4),
                 child: Icon(Icons.settings, color: Colors.white54, size: 26))),
           ]),
@@ -424,10 +430,10 @@ class _HudOverlay extends StatelessWidget {
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         const Divider(color: Colors.white12),
         _LobbyToggle(icon: Icons.music_note, label: 'Game Music',
-            notifier: s.musicEnabledNotifier, onToggle: s.toggleMusic),
+            notifier: s.musicEnabledNotifier, onToggle: () { debugPrint('[UI] MUSIC toggled at ${DateTime.now().toIso8601String()}'); s.toggleMusic(); }),
         const SizedBox(height: 8),
         _LobbyToggle(icon: Icons.volume_up, label: 'Sound Effects',
-            notifier: s.sfxEnabledNotifier, onToggle: s.toggleSfx),
+            notifier: s.sfxEnabledNotifier, onToggle: () { debugPrint('[UI] SFX toggled at ${DateTime.now().toIso8601String()}'); s.toggleSfx(); }),
       ]),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx),
           child: const Text('CLOSE', style: TextStyle(color: Colors.lightBlueAccent)))],
@@ -659,7 +665,7 @@ class _GameOverOverlay extends StatelessWidget {
     final effColor = eff >= 75 ? Colors.greenAccent
                    : eff >= 50 ? Colors.yellowAccent : Colors.redAccent;
     return Center(child: Container(
-      width: 340,
+      width: 380,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.90),
@@ -718,9 +724,15 @@ class _GameOverOverlay extends StatelessWidget {
           builder: (_, entries, __) => _HighScoreTable(entries: entries)),
         const SizedBox(height: 16),
         Row(children: [
-          Expanded(child: _Btn('PLAY AGAIN', Icons.replay, Colors.green, game.restartGame)),
+          Expanded(child: _Btn('PLAY AGAIN', Icons.replay, Colors.green, () {
+            debugPrint('[UI] PLAY AGAIN clicked at ${DateTime.now().toIso8601String()}');
+            game.fullCleanup();
+            navigatorKey.currentState?.pushReplacement(
+              MaterialPageRoute(builder: (_) => const GameMode()),
+            );
+          })),
           const SizedBox(width: 10),
-          Expanded(child: _LobbyBtn()),
+          Expanded(child: _LobbyBtn(game: game)),
         ]),
       ]),
     ));
@@ -751,11 +763,13 @@ class _HighScoreTable extends StatelessWidget {
 }
 
 class _LobbyBtn extends StatelessWidget {
-  const _LobbyBtn();
+  final IronDomeGame game;
+  const _LobbyBtn({required this.game});
   @override
   Widget build(BuildContext context) {
     return _Btn('LOBBY', Icons.home, Colors.blueGrey, () {
-      SoundManager().stopBgm(); // fire and forget
+      debugPrint('[UI] LOBBY clicked at ${DateTime.now().toIso8601String()}');
+      game.fullCleanup();
       navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LobbyMode()),
         (_) => false,

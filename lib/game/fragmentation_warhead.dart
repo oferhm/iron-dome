@@ -37,7 +37,7 @@ class FragmentationWarhead extends PositionComponent
 
   double _elapsed = 0;
   bool _hasSplit = false;
-  final List<FlameParticle> _flameParticles = [];
+
   final Random _rng = Random();
 
   // Door-open animation state
@@ -45,7 +45,7 @@ class FragmentationWarhead extends PositionComponent
   bool _isOpening = false;
 
   // Same size as Iranian missile
-  static const double _w = 25.0; // 20% slimmer
+  static const double _w = 29.0; // 20% slimmer
   static const double _h = 148.0;
 
   final List<Vector2> _trail = [];
@@ -82,7 +82,7 @@ class FragmentationWarhead extends PositionComponent
 
     _elapsed += dt;
     if (!_isDestroyed && !_hasSplit) {
-      updateFlameParticles(_flameParticles, size.x, dt, _rng);
+
     }
 
     if (_trail.isEmpty || (_trail.last - position).length > 9) {
@@ -226,7 +226,7 @@ class FragmentationWarhead extends PositionComponent
         Paint()..color = const Color(0xFF222820));
 
     // Flame
-    drawMissileFlame(canvas, w, h, _elapsed, _flameParticles, nozzleY: 0.79);
+    drawMissileFlame(canvas, w, h, _elapsed, const [], nozzleY: 0.79);
   }
 
   void _drawOpeningDoors(Canvas canvas, double w, double h, double p) {

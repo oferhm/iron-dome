@@ -77,7 +77,7 @@ class ShieldComponent extends PositionComponent with HasGameRef, CollisionCallba
       size.x * 0.7,
       Paint()
         ..color = const Color(0xFF9900ff).withOpacity(0.25)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+
     );
 
     if (_img != null) {

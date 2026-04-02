@@ -24,11 +24,11 @@ class FragmentationBomb extends PositionComponent
   late Vector2 _velocity;
   final List<Vector2> _trail = [];
   double _flameTime = 0;
-  final List<FlameParticle> _flameParticles = [];
+
   final Random _rng = Random();
 
   // Size: a bit smaller than Iranian missile (36×148), no image used
-  static const double _w = 25.0;
+  static const double _w = 32.0;
   static const double _h = 58.0;
 
   FragmentationBomb({
@@ -55,7 +55,7 @@ class FragmentationBomb extends PositionComponent
     if (_isDestroyed) return;
 
     _flameTime += dt;
-    updateFlameParticles(_flameParticles, size.x, dt, _rng);
+
 
     if (_trail.isEmpty || (_trail.last - position).length > 7) {
       _trail.add(position.clone());
@@ -146,6 +146,6 @@ class FragmentationBomb extends PositionComponent
         Paint()..color = const Color(0xFF1a2010));
 
     // ── Shared slim fast flame + spark trail ──
-    drawMissileFlame(canvas, w, h, t, _flameParticles, nozzleY: 0.78);
+    drawMissileFlame(canvas, w, h, t, const [], nozzleY: 0.78);
   }
 }

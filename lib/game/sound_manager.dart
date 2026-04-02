@@ -10,6 +10,7 @@ class SoundManager {
   bool _sfxEnabled   = true;
   bool _sfxLoaded    = false;
   bool _sfxMuted     = false;
+  bool _hardMuted    = false; // set true during navigation to kill all sound
 
   final ValueNotifier<bool> musicEnabledNotifier = ValueNotifier(true);
   final ValueNotifier<bool> sfxEnabledNotifier   = ValueNotifier(true);
@@ -50,9 +51,9 @@ class SoundManager {
   }
 
   Future<void> startLobbyMusic() async {
+    _hardMuted = false; // always unmute when entering lobby
     debugPrint('startLobbyMusic: musicEnabled=$_musicEnabled');
     try {
-      // Always re-initialize to get fresh audio session
       FlameAudio.bgm.initialize();
       await Future.delayed(const Duration(milliseconds: 100));
       if (_musicEnabled) {
@@ -83,7 +84,7 @@ class SoundManager {
   }
 
   void _play(String file, {double volume = 1.0}) {
-    if (!_sfxEnabled || !_sfxLoaded || _sfxMuted) return;
+    if (!_sfxEnabled || !_sfxLoaded || _sfxMuted || _hardMuted) return;
     Future(() async {
       try {
         await FlameAudio.play(file, volume: volume);
@@ -106,8 +107,15 @@ class SoundManager {
   void playBigBomb()         => _play('big_bomb.mp3',         volume: 1.00);
   void playGunLoad()         => _play('gun_load.mp3',         volume: 1.00);
 
-  void stopSfx()    { _sfxMuted = true; }
-  void restoreSfx() { _sfxMuted = false; }
+  void stopSfx()      { _sfxMuted = true; }
+  void restoreSfx()   { _sfxMuted = false; _hardMuted = false; }
+  void hardMuteAll() {
+    _hardMuted = true;
+    _sfxMuted  = true;
+    try { FlameAudio.bgm.stop(); } catch (_) {}
+    // Don't clearAll() — it removes cached SFX files needed for next game
+  }
+  void hardUnmute()   { _hardMuted = false; _sfxMuted = false; }
 
   void dispose() { try { FlameAudio.bgm.dispose(); } catch (_) {} }
 }

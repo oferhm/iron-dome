@@ -24,8 +24,8 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
 
   // Speed from GameConfig — scales with level
   static double get blastRadius => GameConfig.interceptorBlastRadius;
-  static const double _w          = 12.0; 
-  static const double _h          = 70.0;
+  static const double _w          = 14.0; // 20% slimmer
+  static const double _h          = 66.0;
 
   // Arc behaviour
   static const double _launchAngleDeg = 60.0; // initial angle above horizontal (toward upper-left)
@@ -46,7 +46,7 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
   bool get isDestroyed => _isDestroyed;
   void markDestroyed() => _isDestroyed = true;
 
-  static const double _puffInterval = 8.0;
+  static const double _puffInterval = 18.0;  // was 8.0 → spawn smoke less often
   double _distSinceLastPuff = 0;
   final Random _rng = Random();
 
@@ -206,6 +206,8 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
   }
 
   void _spawnSmokePuff() {
+    // Fast cap using game counter — no whereType scan
+    if ((gameRef as IronDomeGame).smokeAtCap) return;
     final tailOffset = Vector2(-cos(_angle), -sin(_angle)) * (_h * 0.42);
     final spread     = Vector2(
       (_rng.nextDouble() - 0.5) * 4,
