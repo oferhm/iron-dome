@@ -49,7 +49,7 @@ class IronDomeGame extends FlameGame
   double get efficiency =>
       shotsFired == 0 ? 100.0 : (hits / shotsFired * 100).clamp(0, 100);
 
-  static const int    _maxMissilesOnScreen = 5;
+  // maxMissilesOnScreen → GameConfig.maxMissilesOnScreen
   // Iranian missile: 36w x 148h → half-diagonal ~75px
   // Interceptor:     17w x 66h  → half-diagonal ~34px
   // Combined hit radius = sum of half-diagonals × 0.7 (conservative)
@@ -87,7 +87,11 @@ class IronDomeGame extends FlameGame
     launcher = LauncherComponent();
     await add(launcher);
 
-    _startSpawning();
+    // Delay first spawn after game start
+    async.Future.delayed(
+      Duration(seconds: GameConfig.gameStartDelaySeconds), () {
+        if (!_gameOver) _startSpawning();
+      });
   }
 
   @override
@@ -95,6 +99,12 @@ class IronDomeGame extends FlameGame
     super.update(dt);
 
     if (_gameOver) return;
+
+    // ── Time-based level progression ──
+    if (!_inLevelPause) {
+      final levelChanged = difficulty.updateTime(dt);
+      if (levelChanged) _onLevelUp();
+    }
 
     // ── Cloud management ──
     if (GameConfig.cloudsEnabled &&
@@ -171,7 +181,7 @@ class IronDomeGame extends FlameGame
 
   void _spawnShield() {
     if (_gameOver) return;
-    final x = size.x * (0.15 + _random.nextDouble() * 0.70); // avoid edges
+    final x = size.x * (GameConfig.spawnMarginLeft + _random.nextDouble() * (GameConfig.spawnMarginRight - GameConfig.spawnMarginLeft));
     add(ShieldComponent(
       position: Vector2(x, -40),
       onIntercepted: () {
@@ -255,11 +265,11 @@ class IronDomeGame extends FlameGame
     final onScreen = children.whereType<IranianMissile>().length
                    + children.whereType<FragmentationWarhead>().length
                    + children.whereType<FragmentationBomb>().length;
-    if (onScreen >= _maxMissilesOnScreen) return;
+    if (onScreen >= GameConfig.maxMissilesOnScreen) return;
 
-    final margin   = size.x * 0.15;
-    final spawnW   = size.x * 0.70;
-    final startX   = margin + _random.nextDouble() * spawnW;
+    final margin = size.x * GameConfig.spawnMarginLeft;
+    final spawnW = size.x * (GameConfig.spawnMarginRight - GameConfig.spawnMarginLeft);
+    final startX = margin + _random.nextDouble() * spawnW;
     final startPos = Vector2(startX, -80);
 
     // Decide missile type based on config + current level
@@ -306,8 +316,14 @@ class IronDomeGame extends FlameGame
     _uavTimer?.cancel();
     async.Future.delayed(Duration(seconds: GameConfig.levelPauseSeconds), () {
       if (!_gameOver) {
-        _startSpawning();
-        _scheduleUav(); // restart UAV schedule after level pause
+        // Extra delay before missiles resume
+        async.Future.delayed(
+          Duration(seconds: GameConfig.levelResumeDelaySeconds), () {
+            if (!_gameOver) {
+              _startSpawning();
+              _scheduleUav();
+            }
+          });
       }
     });
   }

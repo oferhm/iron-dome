@@ -8,11 +8,17 @@ class DifficultyManager {
 
   final ValueNotifier<int> levelNotifier = ValueNotifier(1);
   int get level => levelNotifier.value;
+  double _elapsedGameSeconds = 0;
 
-  void reset() => levelNotifier.value = 1;
+  void reset() {
+    levelNotifier.value = 1;
+    _elapsedGameSeconds = 0;
+  }
 
-  bool updateForScore(int score) {
-    final newLevel = GameConfig.levelForScore(score);
+  /// Call every frame with dt. Returns true if level changed.
+  bool updateTime(double dt) {
+    _elapsedGameSeconds += dt;
+    final newLevel = (_elapsedGameSeconds / GameConfig.levelDurationSeconds).floor() + 1;
     if (newLevel != levelNotifier.value) {
       levelNotifier.value = newLevel;
       return true;
@@ -20,15 +26,10 @@ class DifficultyManager {
     return false;
   }
 
-  int get spawnIntervalMs {
-    if (level <= 1) return 4500;
-    if (level <= 2) return 4000;
-    if (level <= 3) return 3500;
-    if (level <= 4) return 3000;
-    if (level <= 6) return 2500;
-    if (level <= 8) return 2000;
-    return 1500;
-  }
+  /// Keep score-based update for compatibility (now unused but harmless)
+  bool updateForScore(int score) => false;
+
+  int get spawnIntervalMs => GameConfig.spawnIntervalMs;
 
   int get missilesPerBurst {
     if (level <= 2) return 1;

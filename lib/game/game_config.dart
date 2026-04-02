@@ -16,12 +16,12 @@ class GameConfig {
   static const int uavDroneMinLevel             = 2;
 
   // ── Iranian missile physics ──────────────────────────────────────────────
-  static const double iranianBaseSpeed = 70.0;
+  static const double iranianBaseSpeed = 60.0;
   static const double iranianAngleDeg  = 70.0;
   static final  double iranianAngleRad = iranianAngleDeg * pi / 180.0;
 
   // ── Fragmentation warhead / bomb ─────────────────────────────────────────
-  static const double fragmentationSplitDelay      = 1.2;
+  static const double fragmentationSplitDelay      = 1.6;  // was 1.2 → splits lower
   static const double fragmentationSplitAngleDeg   = 30.0;
   static const double fragmentationSpawnChance     = 0.30;
   static const double fragmentationBombSpeedFactor = 0.70;
@@ -31,13 +31,13 @@ class GameConfig {
   // ── UAV drone ────────────────────────────────────────────────────────────
   static const double uavHeightMin     = 0.10;
   static const double uavHeightMax     = 0.45;
-  static const double uavBaseSpeed     = 80.0;
-  static const double uavDiveBaseSpeed = 100.0;
+  static const double uavBaseSpeed     = 50.0;
+  static const double uavDiveBaseSpeed = 70.0;
 
   // ── Interceptor missile ──────────────────────────────────────────────────
   /// Blast radius of interceptor explosion (px) — anything within this is destroyed
-  static const double interceptorBlastRadius = 52.0;
-  static const double interceptorBaseSpeed = 520.0;
+  static const double interceptorBlastRadius = 45.0;
+  static const double interceptorBaseSpeed = 540.0;
 
   // ── Speed scaling per level ──────────────────────────────────────────────
   static double speedMultiplier(int level) {
@@ -55,8 +55,28 @@ class GameConfig {
   // ── Fragmentation 3-bomb split level ────────────────────────────────────
   static const int fragmentationBombsLevel5 = 3;
 
-  // ── Level transition ─────────────────────────────────────────────────────
+  // ── Level timing ────────────────────────────────────────────────────────────
+  /// Seconds before first missiles spawn after game start
+  static const int gameStartDelaySeconds = 2;
+
+  /// Seconds to wait after a level ends before spawning missiles again
+  static const int levelResumeDelaySeconds = 2;
+
+  /// How long each level lasts in seconds (controls score thresholds)
+  static const int levelDurationSeconds = 20;
+
+  /// Pause between levels (police lights / siren / banner duration)
   static const int levelPauseSeconds = 3;
+
+  // ── Missile spawn interval & cap ─────────────────────────────────────────────
+  static const int spawnIntervalMs = 1500;
+
+  /// Max missiles of ANY type on screen at once
+  static const int maxMissilesOnScreen = 4;
+
+  /// Spawn area: missiles appear between these X fractions of screen width
+  static const double spawnMarginLeft  = 0.15;
+  static const double spawnMarginRight = 0.85;
 
   // ── Score thresholds for each level ──────────────────────────────────────
   /// Score needed to reach level N. Level 1 = 0, level 2 = 500, etc.
@@ -85,8 +105,7 @@ class GameConfig {
 
   // ── Shield power-up ─────────────────────────────────────────────────────
   /// Probability: 0 shields (50%), 1 shield (35%), 2 shields (10%), 3 shields (5%)
-  // static const List<double> shieldSpawnWeights = [0.50, 0.35, 0.10, 0.05];
-  static const List<double> shieldSpawnWeights = [0.00, 0.00, 0.50, 0.50];
+  static const List<double> shieldSpawnWeights = [0.30, 0.40, 0.20, 0.10];
 
   /// Shield fall speed (px/sec)
   static const double shieldBaseSpeed = 100.0;

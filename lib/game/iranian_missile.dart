@@ -27,8 +27,8 @@ class IranianMissile extends PositionComponent with HasGameRef, CollisionCallbac
 
   bool _isDestroyed = false;
 
-  static const double _w = 29.0; // 20% slimmer
-  static const double _h = 148.0; // +30% longer
+  static const double _w = 25.0; 
+  static const double _h = 148.0; 
 
   IranianMissile({
     required this.startPosition,

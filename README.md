@@ -25,4 +25,11 @@ flutter run -d emulator-5554 --verbose 2>&1 | findstr /i "sfx\|bgm\|load\|audio\
 # After clean cache
 flutter clean
 flutter pub get
+# if error then run:
+start ms-settings:developers
+# Finally
 flutter run -d emulator-5554
+
+# run on real device
+flutter devices
+flutter run -d 7708844d

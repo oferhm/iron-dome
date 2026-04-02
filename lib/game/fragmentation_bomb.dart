@@ -28,7 +28,7 @@ class FragmentationBomb extends PositionComponent
   final Random _rng = Random();
 
   // Size: a bit smaller than Iranian missile (36×148), no image used
-  static const double _w = 32.0;
+  static const double _w = 25.0;
   static const double _h = 58.0;
 
   FragmentationBomb({

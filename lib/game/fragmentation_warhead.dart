@@ -45,7 +45,7 @@ class FragmentationWarhead extends PositionComponent
   bool _isOpening = false;
 
   // Same size as Iranian missile
-  static const double _w = 29.0; // 20% slimmer
+  static const double _w = 25.0; // 20% slimmer
   static const double _h = 148.0;
 
   final List<Vector2> _trail = [];

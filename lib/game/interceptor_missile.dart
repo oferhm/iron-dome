@@ -24,12 +24,12 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
 
   // Speed from GameConfig — scales with level
   static double get blastRadius => GameConfig.interceptorBlastRadius;
-  static const double _w          = 14.0; // 20% slimmer
-  static const double _h          = 66.0;
+  static const double _w          = 12.0; 
+  static const double _h          = 70.0;
 
   // Arc behaviour
   static const double _launchAngleDeg = 60.0; // initial angle above horizontal (toward upper-left)
-  static const double _arcDuration    = 0.45;  // seconds of straight launch before arcing
+  static const double _arcDuration    = 0.35;  // seconds of straight launch (was 0.45)
 
   late Vector2 _velocity;
   late double  _angle;
@@ -39,6 +39,8 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
   // Initial launch direction
   late Vector2 _launchDir;
   late double  _speed;
+  late double  _launchAngleSaved;
+  bool         _locked = false; // once true: fly straight, no more steering
 
   bool _isDestroyed = false;
   bool get isDestroyed => _isDestroyed;
@@ -68,6 +70,7 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
     _velocity  = _launchDir * speed;
     _angle     = launchAngle;
     _speed     = speed;
+    _launchAngleSaved = launchAngle; // save for turn limit check
 
     add(RectangleHitbox(size: Vector2(_w * 0.9, _h * 0.9)));
   }
@@ -80,29 +83,41 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
     _elapsed += dt;
 
     if (_elapsed < _arcDuration) {
-      // Phase 1: straight launch
-      // velocity stays constant
-    } else {
-      // Phase 2: arc toward target — smoothly rotate velocity toward target direction
+      // Phase 1: straight launch — velocity stays constant
+    } else if (!_locked) {
+      // Phase 2: arc toward target until aligned, then lock direction
       final toTarget = targetPosition - position;
       if (toTarget.length > 1) {
         final targetAngle  = atan2(toTarget.y, toTarget.x);
         final currentAngle = atan2(_velocity.y, _velocity.x);
 
-        // Compute shortest angular delta
         var delta = targetAngle - currentAngle;
         while (delta >  pi) delta -= 2 * pi;
         while (delta < -pi) delta += 2 * pi;
 
-        // Arc rate: faster turn at start of arc, levels off
-        final arcProgress = ((_elapsed - _arcDuration) / 0.6).clamp(0.0, 1.0);
-        final turnRate    = 6.0 + arcProgress * 8.0; // radians/sec
-        final turn        = (delta.sign * min(delta.abs(), turnRate * dt));
-        final newAngle    = currentAngle + turn;
+        if (delta.abs() < 0.09) {
+          // Aligned — lock onto this angle forever
+          _velocity = Vector2(cos(targetAngle), sin(targetAngle)) * _speed;
+          _locked = true;
+        } else {
+          final arcProgress = ((_elapsed - _arcDuration) / 0.6).clamp(0.0, 1.0);
+          final turnRate    = 6.0 + arcProgress * 8.0;
+          final turn        = delta.sign * min(delta.abs(), turnRate * dt);
+          var newAngle      = currentAngle + turn;
 
-        _velocity = Vector2(cos(newAngle), sin(newAngle)) * _speed;
+          // Clamp to ±180° from launch to prevent loops
+          var totalTurn = newAngle - _launchAngleSaved;
+          while (totalTurn >  pi) totalTurn -= 2 * pi;
+          while (totalTurn < -pi) totalTurn += 2 * pi;
+          if (totalTurn.abs() > pi) {
+            newAngle = _launchAngleSaved + totalTurn.sign * pi;
+          }
+
+          _velocity = Vector2(cos(newAngle), sin(newAngle)) * _speed;
+        }
       }
     }
+    // Phase 3: _locked == true → velocity unchanged, flies perfectly straight
 
     _angle = atan2(_velocity.y, _velocity.x);
 
@@ -116,9 +131,9 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
       _spawnSmokePuff();
     }
 
-    // ── Explode when reaching target — blast radius kills anything nearby ──
+    // ── Explode when reaching target ──
     final distToTarget = (position - targetPosition).length;
-    if (distToTarget < 12.0 && _elapsed > _arcDuration * 0.5) {
+    if (distToTarget < 28.0) {
       _isDestroyed = true;
       _explodeAtTarget();
       return;
