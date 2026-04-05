@@ -51,7 +51,7 @@ class SoundManager {
   }
 
   Future<void> startLobbyMusic() async {
-    _hardMuted = false; // always unmute when entering lobby
+    // Do NOT unmute SFX here — only game music plays in lobby
     debugPrint('startLobbyMusic: musicEnabled=$_musicEnabled');
     try {
       FlameAudio.bgm.initialize();

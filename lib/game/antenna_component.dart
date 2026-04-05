@@ -20,10 +20,10 @@ class AntennaComponent extends Component with HasGameRef {
     if (_img == null) return;
     final s = gameRef.size;
 
-    const w = 150.0;
-    const h = 200.0;
-    final x = 80.0;
-    final y = s.y - h - 70.0;
+    const w = 200.0;
+    const h = 300.0;
+    final x = 120.0;
+    final y = s.y - h - 20.0;
 
     final src = Rect.fromLTWH(0, 0,
         _img!.width.toDouble(), _img!.height.toDouble());

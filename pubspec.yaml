@@ -19,11 +19,13 @@ flutter:
     - assets/images/city_skyline.png
     - assets/images/antenna.png
     - assets/images/shield.png
-    - assets/images/iranian_missile.webp
+    - assets/images/iranian_missile.png
+    - assets/images/frag_missle.png
+    - assets/images/interceptor.png
     - assets/images/iron_dome_launcher.png
     - assets/images/crosshair.webp
     - assets/images/doors.png
     - assets/images/uav.png
-    - assets/images/warhead_missile.jpg
+    - assets/images/warhead_missile.png
     - assets/images/clouds.jpg
     - assets/audio/

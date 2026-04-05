@@ -85,6 +85,9 @@ class IronDomeGame extends FlameGame
       AntennaComponent.preload(),
       ShieldComponent.preload(),
       LauncherComponent.preload(),
+      IranianMissile.preload(),
+      FragmentationBomb.preload(),
+      InterceptorMissile.preload(),
       highScores.load(),
     ]);
     difficulty.reset();
@@ -537,7 +540,7 @@ class IronDomeGame extends FlameGame
     _spawnTimer?.cancel(); _spawnTimer = null;
     _uavTimer?.cancel();   _uavTimer   = null;
 
-    // Kill all audio
+    // Kill all audio immediately
     sound.hardMuteAll();
 
     // Pause game engine — stops update() and render()

@@ -17,13 +17,13 @@ class LauncherComponent extends Component with HasGameRef {
     }
   }
 
-  // Tubes tip: upper-right area of image (~68% right, 8% down)
+  // Tubes tip: upper-right area of image
   Vector2 get missileExitPoint => Vector2(
-    _pos.x + _sz.x * 0.68,
-    _pos.y + _sz.y * 0.02,
+    _pos.x + _sz.x * 0.20,
+    _pos.y + _sz.y * 0.12,
   );
 
-  double get launchAngle => -2.10; // ~120° upper-left, matches real Iron Dome tubes
+  double get launchAngle => -2.60; // ~120° upper-left, matches real Iron Dome tubes
 
   Vector2 get launcherArmBase => Vector2(
     _pos.x + _sz.x * 0.72,

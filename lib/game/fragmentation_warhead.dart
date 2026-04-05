@@ -1,23 +1,25 @@
 import 'dart:math';
+import 'dart:ui' as ui;
 import 'package:flame/collisions.dart';
+import 'package:flame/flame.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'game_config.dart';
 import 'iron_dome_game.dart';
-import 'sound_manager.dart';
-import 'missile_flame.dart';
-import 'package:flame/flame.dart';
 import 'fragmentation_bomb.dart';
 
 class FragmentationWarhead extends PositionComponent
     with HasGameRef, CollisionCallbacks {
 
-  static Sprite? _doorsSprite;
+  static ui.Image? _img;
+
   static Future<void> preload() async {
     try {
-      final img = await Flame.images.load('doors.png');
-      _doorsSprite = Sprite(img);
-    } catch (_) {}
+      _img = await Flame.images.load('frag_missle.png');
+      debugPrint('Frag missile PNG loaded: ${_img!.width}x${_img!.height}');
+    } catch (e) {
+      debugPrint('Frag missile image failed: \$e');
+    }
   }
 
   final Vector2 startPosition;
@@ -40,13 +42,9 @@ class FragmentationWarhead extends PositionComponent
 
   final Random _rng = Random();
 
-  // Door-open animation state
-  double _doorProgress = 0; // 0=closed, 1=fully open
-  bool _isOpening = false;
-
   // Same size as Iranian missile
-  static const double _w = 29.0; // 20% slimmer
-  static const double _h = 148.0;
+  static const double _w = 60.0; // 20% slimmer
+  static const double _h = 140.0;
 
   final List<Vector2> _trail = [];
 
@@ -81,29 +79,19 @@ class FragmentationWarhead extends PositionComponent
     if (_isDestroyed) return;
 
     _elapsed += dt;
-    if (!_isDestroyed && !_hasSplit) {
-
-    }
 
     if (_trail.isEmpty || (_trail.last - position).length > 9) {
       _trail.add(position.clone());
       if (_trail.length > 18) _trail.removeAt(0);
     }
 
-    final splitDelay = GameConfig.fragmentationSplitDelay + 0.3;
-    if (!_hasSplit && _elapsed >= splitDelay - 0.35) {
-      if (!_isOpening) SoundManager().playGunLoad();
-      _isOpening = true;
-    }
-    if (_isOpening && !_hasSplit) {
-      _doorProgress = ((_elapsed - (splitDelay - 0.35)) / 0.35).clamp(0.0, 1.0);
-    }
-    if (!_hasSplit && _elapsed >= splitDelay) {
+    position += _velocity * dt;
+
+    // Split at configured delay — no door animation, just split directly
+    if (!_hasSplit && _elapsed >= GameConfig.fragmentationSplitDelay) {
       _split();
       return;
     }
-
-    position += _velocity * dt;
 
     if (position.y > gameRef.size.y + 30) {
       _isDestroyed = true;
@@ -141,6 +129,7 @@ class FragmentationWarhead extends PositionComponent
   void render(Canvas canvas) {
     if (_isDestroyed) return;
 
+    // Smoke trail
     for (int i = 0; i < _trail.length; i++) {
       final t  = i / _trail.length;
       final tp = _trail[i] - position + size / 2;
@@ -153,129 +142,19 @@ class FragmentationWarhead extends PositionComponent
     canvas.translate(size.x / 2, size.y / 2);
     canvas.rotate(rotation);
     canvas.translate(-size.x / 2, -size.y / 2);
-    _drawWarhead(canvas);
+
+    if (_img != null) {
+      // Draw from PNG
+      canvas.drawImageRect(
+        _img!,
+        Rect.fromLTWH(0, 0, _img!.width.toDouble(), _img!.height.toDouble()),
+        Rect.fromLTWH(0, 0, size.x, size.y),
+        Paint()..isAntiAlias = true,
+      );
+    }
+
     canvas.restore();
   }
 
-  void _drawWarhead(Canvas canvas) {
-    final w = size.x;
-    final h = size.y;
 
-    // ── Body — identical to Iranian missile + thin red border ──
-    final bodyRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(w*0.25, h*0.14, w*0.50, h*0.62), const Radius.circular(5));
-    canvas.drawRRect(bodyRect, Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.centerLeft, end: Alignment.centerRight,
-        colors: [const Color(0xFF6b7a5a), const Color(0xFFa0b080), const Color(0xFF7a8a68)],
-      ).createShader(Rect.fromLTWH(w*0.25, h*0.14, w*0.50, h*0.62)));
-    canvas.drawRRect(bodyRect, Paint()
-      ..color = Colors.red..style = PaintingStyle.stroke..strokeWidth = 1.2);
-
-    // Nose
-    canvas.drawPath(
-      Path()..moveTo(w*0.25,h*0.14)..lineTo(w*0.50,0)..lineTo(w*0.75,h*0.14)..close(),
-      Paint()..shader = LinearGradient(
-        begin: Alignment.centerLeft, end: Alignment.centerRight,
-        colors: [const Color(0xFF3a4430), const Color(0xFF5a6848), const Color(0xFF3a4430)],
-      ).createShader(Rect.fromLTWH(w*0.25, 0, w*0.50, h*0.14)),
-    );
-    canvas.drawPath(
-      Path()..moveTo(w*0.25,h*0.14)..lineTo(w*0.50,0)..lineTo(w*0.75,h*0.14)..close(),
-      Paint()..color = Colors.red..style = PaintingStyle.stroke..strokeWidth = 1.2,
-    );
-
-    // Flag stripes
-    final sl = w*0.25; final sw = w*0.50; final st = h*0.18; final sh = h*0.05;
-    canvas.drawRect(Rect.fromLTWH(sl, st,      sw, sh), Paint()..color = const Color(0xFF1a7a30));
-    canvas.drawRect(Rect.fromLTWH(sl, st+sh,   sw, sh), Paint()..color = const Color(0xFFeeeeee));
-    canvas.drawRect(Rect.fromLTWH(sl, st+sh*2, sw, sh), Paint()..color = const Color(0xFFcc1010));
-
-    // Mid ring
-    canvas.drawRect(Rect.fromLTWH(w*0.25, h*0.52, w*0.50, h*0.02),
-        Paint()..color = const Color(0xFF333a28));
-
-    // ── Door animation on the lower body (warhead section) ──
-    if (_isOpening && _doorProgress > 0) {
-      _drawOpeningDoors(canvas, w, h, _doorProgress);
-    } else if (!_isOpening) {
-      // Closed: show warhead rectangle on lower body
-      canvas.drawRect(
-        Rect.fromLTWH(w*0.25, h*0.56, w*0.50, h*0.18),
-        Paint()..color = const Color(0xFF2a3520),
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(w*0.25, h*0.56, w*0.50, h*0.18),
-        Paint()..color = Colors.red..style = PaintingStyle.stroke..strokeWidth = 1.0,
-      );
-    }
-
-    // Fins
-    final fin = Paint()..shader = LinearGradient(
-      colors: [const Color(0xFF4a5540), const Color(0xFF6b7a5a)],
-    ).createShader(Rect.fromLTWH(0, h*0.70, w, h*0.18));
-    canvas.drawPath(Path()..moveTo(w*0.25,h*0.70)..lineTo(0,h*0.88)..lineTo(w*0.25,h*0.78)..close(), fin);
-    canvas.drawPath(Path()..moveTo(w*0.75,h*0.70)..lineTo(w,h*0.88)..lineTo(w*0.75,h*0.78)..close(), fin);
-    canvas.drawPath(Path()..moveTo(w*0.35,h*0.72)..lineTo(w*0.15,h*0.86)..lineTo(w*0.35,h*0.80)..close(),
-        Paint()..color = const Color(0xFF3a4430).withOpacity(0.65));
-    canvas.drawPath(Path()..moveTo(w*0.65,h*0.72)..lineTo(w*0.85,h*0.86)..lineTo(w*0.65,h*0.80)..close(),
-        Paint()..color = const Color(0xFF3a4430).withOpacity(0.65));
-
-    // Nozzle
-    canvas.drawOval(Rect.fromLTWH(w*0.34, h*0.76, w*0.32, h*0.04),
-        Paint()..color = const Color(0xFF222820));
-
-    // Flame
-    drawMissileFlame(canvas, w, h, _elapsed, const [], nozzleY: 0.79);
-  }
-
-  void _drawOpeningDoors(Canvas canvas, double w, double h, double p) {
-    final doorTop  = h * 0.54;
-    final doorH    = h * 0.20;
-    final doorLeft = w * 0.22;
-    final doorW    = w * 0.56;
-    final halfW    = doorW / 2;
-    final pivotX   = doorLeft + halfW;
-    final pivotY   = doorTop + doorH / 2;
-
-    if (_doorsSprite != null) {
-      // Left door — uses left half of doors image, swings left
-      canvas.save();
-      canvas.translate(pivotX, pivotY);
-      canvas.rotate(-p * pi / 2);
-      // Clip to left half
-      canvas.clipRect(Rect.fromLTWH(-halfW, -doorH / 2, halfW, doorH));
-      _doorsSprite!.render(canvas,
-        position: Vector2(-halfW, -doorH / 2),
-        size: Vector2(halfW * 2, doorH),
-        overridePaint: Paint()..color = Colors.white.withOpacity(0.9),
-      );
-      canvas.restore();
-
-      // Right door — uses right half, swings right
-      canvas.save();
-      canvas.translate(pivotX, pivotY);
-      canvas.rotate(p * pi / 2);
-      canvas.clipRect(Rect.fromLTWH(0, -doorH / 2, halfW, doorH));
-      _doorsSprite!.render(canvas,
-        position: Vector2(-halfW, -doorH / 2),
-        size: Vector2(halfW * 2, doorH),
-        overridePaint: Paint()..color = Colors.white.withOpacity(0.9),
-      );
-      canvas.restore();
-    } else {
-      // Fallback: grey panels
-      for (int side = 0; side < 2; side++) {
-        canvas.save();
-        canvas.translate(pivotX, pivotY);
-        canvas.rotate(side == 0 ? -p * pi / 2 : p * pi / 2);
-        final dx = side == 0 ? -halfW : 0.0;
-        canvas.drawRect(Rect.fromLTWH(dx, -doorH/2, halfW, doorH),
-            Paint()..color = const Color(0xFF5a4030));
-        canvas.drawRect(Rect.fromLTWH(dx, -doorH/2, halfW, doorH),
-            Paint()..color = const Color(0xFF8a6040)..style = PaintingStyle.stroke..strokeWidth = 1.5);
-        canvas.restore();
-      }
-    }
-  }
 }

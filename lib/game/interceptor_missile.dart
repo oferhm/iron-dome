@@ -1,8 +1,10 @@
 import 'dart:math';
+import 'dart:ui' as ui;
 import 'game_config.dart';
 import 'iron_dome_game.dart';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
+import 'package:flame/flame.dart';
 import 'package:flutter/material.dart';
 import 'iranian_missile.dart';
 import 'fragmentation_bomb.dart';
@@ -16,6 +18,13 @@ import 'explosion_component.dart';
 /// Phase 1: launches straight up/forward from the launcher at a fixed angle.
 /// Phase 2: smoothly arcs toward the target.
 class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCallbacks {
+  static ui.Image? _img;
+  static Future<void> preload() async {
+    try {
+      _img = await Flame.images.load('interceptor.png');
+      debugPrint('Interceptor PNG loaded: ${_img!.width}x${_img!.height}');
+    } catch (e) { debugPrint('Interceptor image failed: \$e'); }
+  }
   final Vector2 startPosition;
   final Vector2 targetPosition;
   final double launchAngle;   // angle of launcher arm — missiles fire in this direction
@@ -24,12 +33,12 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
 
   // Speed from GameConfig — scales with level
   static double get blastRadius => GameConfig.interceptorBlastRadius;
-  static const double _w          = 14.0; // 20% slimmer
-  static const double _h          = 66.0;
+  static const double _w          = 32.0; // 20% slimmer
+  static const double _h          = 75.0;
 
   // Arc behaviour
-  static const double _launchAngleDeg = 60.0; // initial angle above horizontal (toward upper-left)
-  static const double _arcDuration    = 0.35;  // seconds of straight launch (was 0.45)
+  static const double _launchAngleDeg = 45.0; // initial angle above horizontal (toward upper-left)
+  static const double _arcDuration    = 0.40;  // seconds of straight launch (was 0.45)
 
   late Vector2 _velocity;
   late double  _angle;
@@ -246,58 +255,15 @@ class InterceptorMissile extends PositionComponent with HasGameRef, CollisionCal
     canvas.translate(size.x / 2, size.y / 2);
     canvas.rotate(_angle + pi / 2);
     canvas.translate(-size.x / 2, -size.y / 2);
-    _drawMissile(canvas);
+    if (_img != null) {
+      canvas.drawImageRect(
+        _img!,
+        Rect.fromLTWH(0, 0, _img!.width.toDouble(), _img!.height.toDouble()),
+        Rect.fromLTWH(0, 0, size.x, size.y),
+        Paint()..isAntiAlias = true,
+      );
+    }
     canvas.restore();
-  }
-
-  void _drawMissile(Canvas canvas) {
-    final w = size.x; final h = size.y;
-
-    final bodyRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(w*0.2, h*0.16, w*0.6, h*0.62), const Radius.circular(4));
-    canvas.drawRRect(bodyRect, Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.centerLeft, end: Alignment.centerRight,
-        colors: [const Color(0xFFb0c8d8), const Color(0xFFe8f4fc), const Color(0xFFb0c8d8)],
-      ).createShader(Rect.fromLTWH(w*0.2, h*0.16, w*0.6, h*0.62)));
-    canvas.drawRRect(bodyRect, Paint()
-      ..color = const Color(0xFF7090a8)..style = PaintingStyle.stroke..strokeWidth = 0.8);
-
-    canvas.drawPath(
-      Path()..moveTo(w*0.2,h*0.16)..lineTo(w*0.5,0.0)..lineTo(w*0.8,h*0.16)..close(),
-      Paint()..shader = LinearGradient(
-        begin: Alignment.centerLeft, end: Alignment.centerRight,
-        colors: [const Color(0xFF8aaabb), const Color(0xFFccdde8), const Color(0xFF8aaabb)],
-      ).createShader(Rect.fromLTWH(w*0.2, 0, w*0.6, h*0.16)),
-    );
-
-    canvas.drawRect(Rect.fromLTWH(w*0.2, h*0.40, w*0.6, h*0.07), Paint()..color = const Color(0xFF1155cc));
-    canvas.drawRect(Rect.fromLTWH(w*0.2, h*0.38, w*0.6, h*0.02), Paint()..color = Colors.white.withOpacity(0.7));
-    canvas.drawRect(Rect.fromLTWH(w*0.2, h*0.47, w*0.6, h*0.02), Paint()..color = Colors.white.withOpacity(0.7));
-
-    final finPaint = Paint()..shader = LinearGradient(
-      colors: [const Color(0xFF8aaabb), const Color(0xFFccdde8)],
-    ).createShader(Rect.fromLTWH(0, h*0.68, w, h*0.2));
-    canvas.drawPath(Path()..moveTo(w*0.2,h*0.68)..lineTo(0.0,h*0.86)..lineTo(w*0.22,h*0.76)..close(), finPaint);
-    canvas.drawPath(Path()..moveTo(w*0.8,h*0.68)..lineTo(w,h*0.86)..lineTo(w*0.78,h*0.76)..close(), finPaint);
-    canvas.drawPath(Path()..moveTo(w*0.32,h*0.70)..lineTo(w*0.10,h*0.84)..lineTo(w*0.32,h*0.78)..close(),
-        Paint()..color = const Color(0xFF8aaabb).withOpacity(0.6));
-    canvas.drawPath(Path()..moveTo(w*0.68,h*0.70)..lineTo(w*0.90,h*0.84)..lineTo(w*0.68,h*0.78)..close(),
-        Paint()..color = const Color(0xFF8aaabb).withOpacity(0.6));
-
-    canvas.drawOval(Rect.fromLTWH(w*0.3, h*0.76, w*0.4, h*0.05), Paint()..color = const Color(0xFF334455));
-
-    canvas.drawPath(
-      Path()..moveTo(w*0.28,h*0.79)..lineTo(w*0.50,h*1.04)..lineTo(w*0.72,h*0.79)..close(),
-      Paint()..shader = LinearGradient(
-        begin: Alignment.topCenter, end: Alignment.bottomCenter,
-        colors: [Colors.white, Colors.lightBlueAccent, Colors.blue.withOpacity(0.2)],
-      ).createShader(Rect.fromLTWH(w*0.28, h*0.79, w*0.44, h*0.25)),
-    );
-    canvas.drawPath(
-      Path()..moveTo(w*0.38,h*0.79)..lineTo(w*0.50,h*0.99)..lineTo(w*0.62,h*0.79)..close(),
-      Paint()..color = Colors.white.withOpacity(0.95),
-    );
   }
 }
 
